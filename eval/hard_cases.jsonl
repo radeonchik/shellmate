@@ -1,0 +1,50 @@
+{"q": "поставь обсидиан", "intent": "install", "pkgs": [["obsidian"]]}
+{"q": "накати фаерфокс", "intent": "install", "pkgs": [["firefox"]]}
+{"q": "хочу хромиум", "intent": "install", "pkgs": [["chromium"]]}
+{"q": "поставь брейв браузер", "intent": "install", "pkgs": [["brave-bin", "brave", "brave-browser"]]}
+{"q": "мне нужен гимп срочно", "intent": "install", "pkgs": [["gimp"]]}
+{"q": "впиши в систему вскод", "intent": "install", "pkgs": [["code", "visual-studio-code-bin", "vscodium-bin", "vscodium"]]}
+{"q": "поставь стим и дискорд пж", "intent": "install", "pkgs": [["steam"], ["discord"]]}
+{"q": "кинь мне обс", "intent": "install", "pkgs": [["obs-studio"]]}
+{"q": "поставь прогу для записи экрана", "intent": ["install", "search"], "pkgs": []}
+{"q": "хочу что-то для музыки", "intent": ["search", "install"], "pkgs": []}
+{"q": "найди редактор видео", "intent": ["search", "install"], "pkgs": []}
+{"q": "find me a torrent client", "intent": ["search", "install"], "pkgs": []}
+{"q": "сделай чтобы комп не тормозил", "intent": ["processes", "health"], "pkgs": []}
+{"q": "комп греется", "intent": ["sysinfo", "processes", "health"], "pkgs": []}
+{"q": "звук пропал", "intent": "service", "pkgs": []}
+{"q": "вайфай отваливается", "intent": ["network", "service"], "pkgs": []}
+{"q": "блютуз наушники не коннектятся", "intent": "service", "pkgs": []}
+{"q": "что за процесс жрёт проц", "intent": "processes", "pkgs": []}
+{"q": "сколько у меня оперативки", "intent": "sysinfo", "pkgs": []}
+{"q": "диск забит", "intent": ["disk", "bigfiles"], "pkgs": []}
+{"q": "почисти мусор", "intent": "disk", "pkgs": []}
+{"q": "что занимает место в играх", "intent": "bigfiles", "pkgs": []}
+{"q": "снеси телегу нафиг", "intent": "remove", "pkgs": [["telegram-desktop", "telegram-desktop-bin"]]}
+{"q": "выпили дискорд", "intent": "remove", "pkgs": [["discord"]]}
+{"q": "избавься от стима", "intent": "remove", "pkgs": [["steam"]]}
+{"q": "откатни мезу", "intent": "downgrade", "pkgs": [["mesa"]]}
+{"q": "апни систему", "intent": "update", "pkgs": []}
+{"q": "накати обновы", "intent": "update", "pkgs": []}
+{"q": "что значит segmentation fault", "intent": "explain", "pkgs": []}
+{"q": "что такое флатпак", "intent": "explain", "pkgs": []}
+{"q": "как настроить раскладку в хыпрленде", "intent": "web", "pkgs": []}
+{"q": "погугли как вернуть старый grub", "intent": "web", "pkgs": []}
+{"q": "чё нового в арче", "intent": ["news", "web"], "pkgs": []}
+{"q": "убей все хромы", "intent": "processes", "pkgs": []}
+{"q": "кто сидит на 5432 порту", "intent": "network", "pkgs": []}
+{"q": "ты кто вообще", "intent": "chat", "pkgs": []}
+{"q": "напиши скрипт на питоне", "intent": "unknown", "pkgs": []}
+{"q": "сделай себя красным", "intent": "theme", "pkgs": []}
+{"q": "верни как было", "intent": "undo", "pkgs": []}
+{"q": "откуда взялась команда yt-dlp", "intent": "pkginfo", "pkgs": []}
+{"q": "в каком пакете лежит nvidia-smi", "intent": "pkginfo", "pkgs": []}
+{"q": "есть ли инет", "intent": "network", "pkgs": []}
+{"q": "проверь всё ли ок с системой", "intent": "health", "pkgs": []}
+{"q": "покажи чё ты делал", "intent": "history", "pkgs": []}
+{"q": "удали кэш пакетов", "intent": "disk", "pkgs": []}
+{"q": "поставь нвидиа драйвера", "intent": "install", "pkgs": [["nvidia", "nvidia-open", "nvidia-utils", "nvidia-dkms", "nvidia-open-dkms"]]}
+{"q": "хочу поиграть в майнкрафт", "intent": "install", "pkgs": [["minecraft-launcher", "prismlauncher", "prismlauncher-bin", "elyprismlauncher-bin"]]}
+{"q": "поставь офис", "intent": "install", "pkgs": [["libreoffice-fresh", "libreoffice-still", "onlyoffice-bin", "libreoffice"]]}
+{"q": "обнови только дискорд", "intent": ["update", "install"], "pkgs": [["discord"]]}
+{"q": "перезагрузи сеть", "intent": ["service", "network"], "pkgs": []}

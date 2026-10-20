@@ -1,0 +1,93 @@
+{"q": "install me obs studio", "intent": "install", "pkgs": [["obs-studio"]]}
+{"q": "поставь обс", "intent": "install", "pkgs": [["obs-studio"]]}
+{"q": "instal telegram pls", "intent": "install", "pkgs": [["telegram-desktop", "telegram-desktop-bin", "telegram"]]}
+{"q": "установи дискорд и стим", "intent": "install", "pkgs": [["discord"], ["steam"]]}
+{"q": "i need vs code", "intent": "install", "pkgs": [["code", "visual-studio-code-bin", "vscodium", "vscodium-bin"]]}
+{"q": "поствь хром", "intent": "install", "pkgs": [["google-chrome", "chromium"]]}
+{"q": "get me gimp and krita", "intent": "install", "pkgs": [["gimp"], ["krita"]]}
+{"q": "хочу либре офис", "intent": "install", "pkgs": [["libreoffice-fresh", "libreoffice-still", "libreoffice"]]}
+{"q": "install vlc", "intent": "install", "pkgs": [["vlc"]]}
+{"q": "скачай мне блендер", "intent": "install", "pkgs": [["blender"]]}
+{"q": "install qbittorrent", "intent": "install", "pkgs": [["qbittorrent"]]}
+{"q": "поставь btop", "intent": "install", "pkgs": [["btop"]]}
+{"q": "add docker to my system", "intent": "install", "pkgs": [["docker"]]}
+{"q": "установи обсидиан", "intent": "install", "pkgs": [["obsidian"]]}
+{"q": "install spotify", "intent": "install", "pkgs": [["spotify", "spotify-launcher"]]}
+{"q": "поставь кденлайв", "intent": "install", "pkgs": [["kdenlive"]]}
+{"q": "install thunderbird and firefox", "intent": "install", "pkgs": [["thunderbird"], ["firefox"]]}
+{"q": "поставь что-нибудь для скриншотов", "intent": ["install", "search"], "pkgs": []}
+{"q": "i want a program to edit videos", "intent": ["install", "search"], "pkgs": []}
+{"q": "удали дискорд", "intent": "remove", "pkgs": [["discord"]]}
+{"q": "uninstall spotify and steam", "intent": "remove", "pkgs": [["spotify", "spotify-launcher"], ["steam"]]}
+{"q": "снеси нафиг libreoffice", "intent": "remove", "pkgs": [["libreoffice", "libreoffice-fresh", "libreoffice-still"]]}
+{"q": "get rid of vlc", "intent": "remove", "pkgs": [["vlc"]]}
+{"q": "обнови систему", "intent": "update", "pkgs": []}
+{"q": "update everything", "intent": "update", "pkgs": []}
+{"q": "upgrade all packages pls", "intent": "update", "pkgs": []}
+{"q": "сделай апдейт", "intent": "update", "pkgs": []}
+{"q": "есть ли программа для редактирования pdf", "intent": "search", "pkgs": []}
+{"q": "find me a torrent client", "intent": "search", "pkgs": []}
+{"q": "какие есть менеджеры паролей", "intent": "search", "pkgs": []}
+{"q": "is there gimp in the aur", "intent": "search", "pkgs": [["gimp"]]}
+{"q": "что значит error: target not found: foo", "intent": "explain", "pkgs": []}
+{"q": "why does pacman say could not lock database", "intent": "explain", "pkgs": []}
+{"q": "what does 'signature from X is unknown trust' mean", "intent": "explain", "pkgs": []}
+{"q": "что такое AUR", "intent": "explain", "pkgs": []}
+{"q": "what does sudo pacman -Rns do", "intent": "explain", "pkgs": []}
+{"q": "почему не ставится пакет, пишет exists in filesystem", "intent": "explain", "pkgs": []}
+{"q": "какая погода завтра", "intent": ["web", "unknown"], "pkgs": []}
+{"q": "напиши стих про кота", "intent": "unknown", "pkgs": []}
+{"q": "сколько будет 17 * 23", "intent": "unknown", "pkgs": []}
+{"q": "hello how are you", "intent": "chat", "pkgs": []}
+{"q": "привет", "intent": "chat", "pkgs": []}
+{"q": "спасибо, бро", "intent": "chat", "pkgs": []}
+{"q": "кто ты такой?", "intent": "chat", "pkgs": []}
+{"q": "что ты умеешь", "intent": "chat", "pkgs": []}
+{"q": "установи пж обс студио", "intent": "install", "pkgs": [["obs-studio"]]}
+{"q": "можешь пожалуйста поставить мне стим", "intent": "install", "pkgs": [["steam"]]}
+{"q": "rm -rf /", "intent": "unknown", "pkgs": []}
+{"q": "сколько места на диске?", "intent": "disk", "pkgs": []}
+{"q": "почисти систему от мусора", "intent": "disk", "pkgs": []}
+{"q": "how much free space do i have", "intent": "disk", "pkgs": []}
+{"q": "освободи место плз", "intent": "disk", "pkgs": []}
+{"q": "найди самые большие файлы", "intent": "bigfiles", "pkgs": []}
+{"q": "что занимает место в домашней папке", "intent": "bigfiles", "pkgs": []}
+{"q": "biggest files in my downloads", "intent": "bigfiles", "pkgs": []}
+{"q": "какие папки самые тяжёлые в ~/Games", "intent": "bigfiles", "pkgs": []}
+{"q": "верни прошлую версию nvidia-utils", "intent": "downgrade", "pkgs": [["nvidia-utils"]]}
+{"q": "после апдейта сломался firefox, откати его", "intent": "downgrade", "pkgs": [["firefox"]]}
+{"q": "что сломалось в системе?", "intent": "health", "pkgs": []}
+{"q": "check my system for errors", "intent": "health", "pkgs": []}
+{"q": "какие ошибки в журнале", "intent": "health", "pkgs": []}
+{"q": "блютуз не работает", "intent": "service", "pkgs": []}
+{"q": "перезапусти networkmanager", "intent": "service", "pkgs": []}
+{"q": "выключи автозапуск docker", "intent": "service", "pkgs": []}
+{"q": "почему комп тормозит", "intent": "processes", "pkgs": []}
+{"q": "что жрёт оперативку", "intent": "processes", "pkgs": []}
+{"q": "убей хром", "intent": "processes", "pkgs": []}
+{"q": "откуда у меня команда ffmpeg", "intent": "pkginfo", "pkgs": []}
+{"q": "в каком пакете lspci", "intent": "pkginfo", "pkgs": []}
+{"q": "какой у меня процессор", "intent": "sysinfo", "pkgs": []}
+{"q": "сколько заряда батареи", "intent": "sysinfo", "pkgs": []}
+{"q": "температура проца", "intent": "sysinfo", "pkgs": []}
+{"q": "есть ли интернет?", "intent": "network", "pkgs": []}
+{"q": "какой мой внешний ip", "intent": "network", "pkgs": []}
+{"q": "кто сидит на порту 3000", "intent": "network", "pkgs": []}
+{"q": "найди в интернете последнюю версию godot", "intent": "web", "pkgs": []}
+{"q": "погугли как настроить hdr в hyprland", "intent": "web", "pkgs": []}
+{"q": "какие новости по arch linux", "intent": ["news", "web"], "pkgs": []}
+{"q": "добавь ~/Notes в источники", "intent": "docs", "pkgs": []}
+{"q": "что в моих документах про цены на оперативку", "intent": "docs", "pkgs": []}
+{"q": "найди в моих заметках про методику исследования", "intent": "docs", "pkgs": []}
+{"q": "есть ли интернет", "intent": "network", "pkgs": []}
+{"q": "инет пропал", "intent": "network", "pkgs": []}
+{"q": "что пишут в интернете про новый айфон", "intent": "web", "pkgs": []}
+{"q": "сделай себя синим", "intent": "theme", "pkgs": []}
+{"q": "поменяй цвет на #ff8800", "intent": "theme", "pkgs": []}
+{"q": "хочу чтобы ты был розовым", "intent": "theme", "pkgs": []}
+{"q": "как включить hdr в hyprland", "intent": "web", "pkgs": []}
+{"q": "как поменять раскладку клавиатуры в hyprland", "intent": "web", "pkgs": []}
+{"q": "какие новости у арча", "intent": ["news", "web"], "pkgs": []}
+{"q": "отмени что ты сейчас сделал", "intent": "undo", "pkgs": []}
+{"q": "верни как было", "intent": "undo", "pkgs": []}
+{"q": "покажи историю действий", "intent": "history", "pkgs": []}
