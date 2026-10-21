@@ -11,7 +11,7 @@ from shellmate.i18n import t
 
 INTENTS = ["install", "remove", "search", "update", "downgrade", "disk", "bigfiles", "health",
            "service", "processes", "pkginfo", "sysinfo", "network", "web", "docs", "explain",
-           "theme", "news", "undo", "history", "translate", "chat", "unknown"]
+           "theme", "news", "undo", "history", "translate", "files", "chat", "unknown"]
 ACTIONS = ["", "status", "start", "stop", "restart", "enable", "disable", "kill", "add", "remove"]
 
 SCHEMA = {
@@ -37,6 +37,8 @@ intent:
   mesa"), or roll back after a bad update.
 - disk: free disk space, how full the disk is, or cleaning up the system / freeing space.
 - bigfiles: which files or folders take the most space, largest files in some folder.
+- files: what is in a folder — how many files, which kinds or types of files, list what lies there
+  (not what the files say, not how big they are).
 - health: what is broken, errors in the system log, failed services, general "check my system".
 - service: status / start / stop / restart / enable / disable of a system service, or why a
   specific subsystem (sound, wifi, bluetooth, printer...) does not work.
@@ -51,8 +53,10 @@ intent:
   "столица канады", "почему трава зелёная"); or asks HOW to do / configure something on Linux
   that is not one of the actions above (Hyprland settings, autologin, HDR, keyboard layout...).
   Not for checking this computer's own connection.
-- docs: the user asks about THEIR OWN documents / notes / files content, or adds or removes a
-  folder as a source of documents.
+- docs: the user asks about THEIR OWN things kept in their files — documents, notes, a timetable or
+  schedule, plans, lists, recipes, anything "my …" that only their files can know ("что у меня
+  записано на завтра", "what's on my shopping list"); or adds or removes a folder or file as a
+  source of documents.
 - explain: user asks what an error message, command or Linux term means, or why something failed.
 - theme: change the assistant's own color / look in the terminal.
 - news: news of the user's Linux distribution itself (announcements, updates needing manual intervention).
@@ -69,7 +73,7 @@ spaces. Use the real package name on this system when you know it ("vs code" -> 
 
 text:
 - install/search without a named program: short English keywords of what is wanted.
-- bigfiles: the folder the user named as a path like "~/Downloads", else "".
+- bigfiles, files: the folder the user named as a path like "~/Downloads", else "".
 - service: the systemd unit name or keyword (sound -> "pipewire", wifi -> "NetworkManager",
   bluetooth -> "bluetooth", printer -> "cups").
 - processes: the program name if the user named one, else "".
@@ -77,7 +81,9 @@ text:
 - network: the port number if asked about a port, "public ip" if asked for the external IP, else "".
 - web: a short web search query about EXACTLY the user's topic. The user's computer runs @SYSTEM@,
   but web questions can be about anything: never add the distro name unless the user mentioned it.
-- docs: the user's question about their documents, or the folder path when adding/removing.
+- docs: short English keywords of what the user asks about their documents, keeping the asked day,
+  name or thing ("что я записал про отпуск" -> "vacation notes"), or the folder / file path when
+  adding/removing.
 - explain: the error or term, copied verbatim.
 - translate: the text to translate, copied verbatim (without "переведи…").
 - theme: the color the user wants, as they said it (or a #hex), else "".
@@ -114,6 +120,7 @@ EXAMPLES = [
     ("откати nvidia-utils", _ex("downgrade", ["nvidia-utils"])),
     ("сколько места осталось", _ex("disk")),
     ("что жрёт место в загрузках?", _ex("bigfiles", text="~/Downloads")),
+    ("что лежит в папке с музыкой", _ex("files", text="~/Music")),
     ("проверь, всё ли в порядке с системой", _ex("health")),
     ("почему не работает звук", _ex("service", text="pipewire", action="status")),
     ("перезапусти блютуз", _ex("service", text="bluetooth", action="restart")),
@@ -131,7 +138,8 @@ EXAMPLES = [
     ("годы жизни толстого", _ex("web", text="Leo Tolstoy birth and death years")),
     ("кто изобрёл радио", _ex("web", text="who invented the radio")),
     ("добавь папку ~/Documents в источники", _ex("docs", text="~/Documents", action="add")),
-    ("что у меня в заметках про настройку роутера", _ex("docs", text="настройка роутера")),
+    ("что у меня в заметках про настройку роутера", _ex("docs", text="router setup notes")),
+    ("check my shopping list, do I need milk", _ex("docs", text="shopping list milk")),
     ("что значит error: failed to commit transaction (conflicting files)",
      _ex("explain", text="error: failed to commit transaction (conflicting files)")),
     ("перекрась себя в зелёный", _ex("theme", text="зелёный")),

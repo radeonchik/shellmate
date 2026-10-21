@@ -103,14 +103,64 @@ def biggest(path: Path, files: int = 15, dirs: int = 10, min_file: str = "+100M"
     return res + sorted(found, key=lambda e: -e.size)[:files]
 
 
+XDG_NAMES = {"desktop": "DESKTOP", "downloads": "DOWNLOAD", "documents": "DOCUMENTS", "pictures": "PICTURES",
+             "music": "MUSIC", "videos": "VIDEOS"}
+
+
 def resolve_path(text: str) -> Path:
     """Model gives things like "~/Downloads"; fall back to home if it doesn't exist."""
     if text:
         p = Path(text).expanduser()
         if p.is_dir():
             return p
+        # a localized desktop: "~/Desktop" is "~/Рабочий стол" there (xdg-user-dirs knows)
+        xdg = XDG_NAMES.get(p.name.lower())
+        if xdg and shutil.which("xdg-user-dir"):
+            found = Path(run_quiet(["xdg-user-dir", xdg]).strip() or "/nonexistent")
+            if found.is_dir() and found != Path.home():
+                return found
         # common folder names in any language/case: "загрузки" -> ~/Загрузки
         for child in Path.home().iterdir():
             if child.is_dir() and child.name.lower() == Path(text).name.lower():
                 return child
     return Path.home()
+
+
+# --- what is in a folder ----------------------------------------------------------
+
+KINDS = [  # (key, Russian, English, extensions)
+    ("docs", "документы", "documents", ".txt .md .pdf .doc .docx .odt .rtf .xls .xlsx .ods .csv .ppt .pptx .odp .epub .djvu"),
+    ("images", "картинки", "images", ".png .jpg .jpeg .gif .webp .bmp .svg .heic .tif .tiff .ico .xcf .kra .psd"),
+    ("video", "видео", "video", ".mp4 .mkv .webm .avi .mov .flv .m4v"),
+    ("audio", "аудио", "audio", ".mp3 .flac .ogg .opus .wav .m4a .aac"),
+    ("archives", "архивы", "archives", ".zip .tar .gz .tgz .xz .zst .7z .rar .bz2 .iso"),
+    ("shortcuts", "ярлыки", "shortcuts", ".desktop .url .lnk"),
+    ("programs", "программы и библиотеки", "programs and libraries", ".exe .msi .bat .cmd .appimage .bin .run .dll .so .pdb .deb .rpm .jar"),
+    ("code", "код и данные", "code and data", ".py .sh .js .ts .json .toml .yaml .yml .ini .conf .xml .html .css .c .h .cpp .rs .go .gd .lua .sql .glsl"),
+]
+
+
+@dataclass
+class Kind:
+    label: str
+    names: list[str]
+
+
+def folder_summary(root: Path) -> tuple[list[Kind], list[str], int]:
+    """(file kinds by count, subfolders, hidden entries) of one folder, without going inside subfolders."""
+    by_ext = {ext: key for key, _, _, exts in KINDS for ext in exts.split()}
+    groups: dict[str, list[str]] = {}
+    folders, hidden = [], 0
+    for p in sorted(root.iterdir(), key=lambda p: p.name.lower()):
+        if p.name.startswith("."):
+            hidden += 1
+        elif p.is_dir():
+            folders.append(p.name)
+        else:
+            suffix = p.suffix.lower()
+            if re.fullmatch(r"\.\d{3}", suffix) and len(p.suffixes) > 1:  # a split archive: game.7z.001
+                suffix = p.suffixes[-2].lower()
+            groups.setdefault(by_ext.get(suffix, "other"), []).append(p.name)
+    labels = {key: t(ru, en) for key, ru, en, _ in KINDS} | {"other": t("другое", "other")}
+    kinds = sorted((Kind(labels[k], v) for k, v in groups.items()), key=lambda k: (-len(k.names), k.label))
+    return kinds, folders, hidden

@@ -30,6 +30,10 @@ def connect(name: str) -> sqlite3.Connection:
 
 
 def _walk(folder: Path):
+    if folder.is_file():  # a single file added as a source
+        if folder.suffix.lower() in rag.DOC_EXT:
+            yield folder
+        return
     for root, dirs, files in os.walk(folder):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
         for f in files:
@@ -88,8 +92,13 @@ def search(name: str, query: str, k: int = 6) -> list[tuple[str, str]]:
                           " LIMIT ?", (match, k)).fetchall()
     except sqlite3.OperationalError:
         rows = []
+    # "my timetable" names the file, not its text: files whose name has a word of the question come first
+    named = [p for (p,) in db.execute("SELECT path FROM files")
+             if set(rag.terms(re.sub(r"[_.-]+", " ", Path(p).stem))) & set(words)]
+    for p in named[:3]:
+        rows = db.execute("SELECT path, text FROM chunks WHERE path = ? LIMIT 3", (p,)).fetchall() + rows
     db.close()
-    return rows
+    return list(dict.fromkeys(rows))[:k]
 
 
 def stats(name: str) -> tuple[int, int]:

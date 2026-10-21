@@ -107,7 +107,8 @@ class KnowledgeSkills:
             return None
         # small models sometimes "translate" by copying: then show originals only, not twice
         want_cyr = lang in ("Russian", "Ukrainian")
-        return [x if _cyrillic(x) == want_cyr else o for x, o in zip(out, texts)]
+        # and a wrong fact (another weekday, a changed number) is worse than no translation
+        return [x if _cyrillic(x) == want_cyr and rag.faithful(o, x) else o for x, o in zip(out, texts)]
 
     def from_trusted(self, question: str, query_en: str) -> bool:
         """Favored wikis first. True if they answered (quotes already printed)."""
@@ -184,26 +185,33 @@ class KnowledgeSkills:
                      ui.bold(self.cfg.name + t(" добавь ~/Documents в источники", " add ~/Documents to sources")))
             return 1
         self._reindex()
+        it.text = rag.calendar_keywords(query, it.text)
         with ui.working(t("ищу в документах…", "searching the documents…")):
-            hits = docs.search(self.cfg.name, it.text or query)
+            hits = docs.search(self.cfg.name, f"{it.text} {query}")
         if not hits:
             self.say(ui.yellow(self.phrase("not_found", q=it.text or query)))
             return 1
         self._answer(query, hits, "excerpts from the USER'S OWN documents (their local files, "
-                     "which they asked you to search)")
+                     "which they asked you to search)", hint=it.text)
         return 0
 
     def docs_add(self, folder: str) -> int:
+        """A folder (indexed with everything inside) or a single file."""
         path = Path(folder or ".").expanduser().resolve()
-        if not path.is_dir():
-            ui.problem(t(f"папки {folder} нет", f"there's no folder {folder}"))
+        if not path.exists():
+            ui.problem(t(f"нет такой папки или файла: {folder}", f"no such folder or file: {folder}"))
+            return 1
+        if path.is_file() and path.suffix.lower() not in rag.DOC_EXT:
+            kinds = " ".join(sorted(rag.DOC_EXT))
+            ui.problem(t(f"такие файлы я читать не умею: {path.name}", f"I can't read files like this: {path.name}"),
+                       t("умею: ", "I can read: ") + kinds)
             return 1
         if str(path) not in self.cfg.docs:
             self.cfg.docs.append(str(path))
             config.save(self.cfg)
         self._reindex()
         files, chunks = docs.stats(self.cfg.name)
-        self.say(ui.green(t(f"{docs.short(str(path))} добавлена. В индексе {files} файлов ({chunks} фрагментов).",
+        self.say(ui.green(t(f"{docs.short(str(path))} — в источниках. В индексе {files} файлов ({chunks} фрагментов).",
                             f"{docs.short(str(path))} added. {files} files in the index ({chunks} chunks).")))
         return 0
 

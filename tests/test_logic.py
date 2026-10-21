@@ -112,6 +112,42 @@ class Translate(unittest.TestCase):
         self.assertEqual(panel.call_args.args[1], ["Thank you."])
 
 
+class Records(unittest.TestCase):
+    def test_label_value_lines_are_sentences(self):
+        got = rag.sentences([("f", "friday: nothing to do, chill out\nwednesday: English lesson, 16:00-17:30")])
+        self.assertEqual([s for _, s in got], ["friday: nothing to do, chill out", "wednesday: English lesson, 16:00-17:30"])
+        got = rag.sentences([("f", "The package has been\nreleased today and it works fine for everyone.")])
+        self.assertEqual(len(got), 1)  # a hard wrap inside a sentence still joins
+
+    def test_calendar_keywords(self):
+        self.assertEqual(rag.calendar_keywords("что у меня в среду по расписанию", "schedule"), "schedule wednesday")
+        self.assertEqual(rag.calendar_keywords("что у меня по расписанию в четверг", "schedule wednesday"),
+                         "schedule thursday")
+        self.assertEqual(rag.calendar_keywords("what do I have on Friday", "Friday plans"), "Friday plans")
+
+    def test_translation_keeps_facts(self):
+        self.assertFalse(rag.faithful("friday: nothing to do", "пн: ничего не делать"))
+        self.assertFalse(rag.faithful("released in 2019", "выпущен в 2020"))
+        self.assertTrue(rag.faithful("wednesday: English lesson, 16:00-17:30", "среда: урок английского, 16:00–17:30"))
+        self.assertTrue(rag.faithful("Born: April 1, 1815", "Родился: 1 апреля 1815 года"))
+        self.assertTrue(rag.faithful("Среди пакетов есть htop", "Among the packages there is htop"))
+
+
+class Folder(unittest.TestCase):
+    def test_summary_and_plurals(self):
+        import tempfile
+        from shellmate import disk, i18n
+        with tempfile.TemporaryDirectory() as d:
+            for name in ("a.txt", "b.md", "c.png", "game.7z.001", "x.desktop", ".hidden"):
+                (Path(d) / name).write_text("")
+            (Path(d) / "sub").mkdir()
+            kinds, folders, hidden = disk.folder_summary(Path(d))
+        self.assertEqual({k.label: len(k.names) for k in kinds}, {"документы": 2, "картинки": 1, "архивы": 1, "ярлыки": 1})
+        self.assertEqual((folders, hidden), (["sub"], 1))
+        self.assertEqual([i18n.plural(n, ("файл", "файла", "файлов"), ("file", "files")) for n in (1, 3, 11, 21, 25)],
+                         ["1 файл", "3 файла", "11 файлов", "21 файл", "25 файлов"])
+
+
 class Safety(unittest.TestCase):
     def test_defang(self):
         text, removed = prompts.defang("ls -la\nrm -rf /tmp/x\nsudo pacman -S foo\nsudo chattr -i f")

@@ -50,7 +50,7 @@ You cannot run arbitrary commands or do anything not on this list."""
 
 CAPABILITIES_RU = """  установить, удалить и найти программу ({sources})
   обновить систему (со снимком btrfs, если он настроен) и откатить пакет на старую версию
-  показать место на диске, почистить мусор, найти самые большие файлы
+  показать место на диске, почистить мусор, найти самые большие файлы, сказать, что лежит в папке
   проверить систему: упавшие сервисы и ошибки в журнале
   управлять сервисами (звук, блютуз, wi-fi…): статус, перезапуск, автозапуск
   показать, что грузит процессор и память, и закрыть программу
@@ -64,7 +64,7 @@ CAPABILITIES_RU = """  установить, удалить и найти про
 
 CAPABILITIES_EN = """  install, remove and find programs ({sources})
   update the system (with a btrfs snapshot if set up) and roll a package back to an older version
-  show disk space, clean up junk, find the biggest files
+  show disk space, clean up junk, find the biggest files, tell what is in a folder
   check the system: failed services and errors in the journal
   manage services (sound, bluetooth, wi-fi…): status, restart, autostart
   show what loads the CPU and memory, and close a program

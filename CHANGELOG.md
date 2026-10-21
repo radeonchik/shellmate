@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.1
+
+- Questions about your own files that don't say "documents": “take a look at my timetable, what do I
+  have on Wednesday”, “что у меня в пятницу по расписанию”. Searching also by the file name (“my
+  timetable” finds `timetable.txt`) and by English keywords, so Russian questions find English files.
+- What is in a folder: “сколько файлов на рабочем столе и какие их виды”, “what's in my downloads” —
+  files counted and grouped by kind (documents, images, shortcuts, programs, archives…) by code. A
+  localized desktop folder is found through xdg-user-dirs.
+- `--add-docs` takes a single file too, not only a folder.
+- “label: value” lines (a timetable, a list of settings, “Born: April 1, 1815”) are separate quotes
+  instead of being glued together, and short ones aren't dropped as junk.
+- Weekdays and months named in a request are passed on by code: the models dropped or swapped them
+  (“в четверг” → “wednesday”).
+- A quote's translation is shown only if it keeps the original's numbers, weekdays and months (9B
+  rendered “friday” as “пн”); otherwise only the original.
+
 ## 0.3.0
 
 **Install and languages**

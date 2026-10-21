@@ -205,6 +205,9 @@ def _is_prose(line: str) -> bool:
     return sentence_like and line[:1].isupper() and line[1:2].islower() and not CODE_LINE.match(line)
 
 
+RECORD = re.compile(r"[\w .()-]{1,30}:\s+\S")
+
+
 def sentences(items: list[tuple[str, str]], limit: int = 80) -> list[tuple[str, str]]:
     """(source, sentence) pairs in ranking order; menu/junk fragments are dropped. A sentence that
     ends with ':' keeps the command lines right after it ("To clean the cache, run:\n# paccache -r"),
@@ -212,8 +215,9 @@ def sentences(items: list[tuple[str, str]], limit: int = 80) -> list[tuple[str, 
     res, seen = [], set()
     for src, text in items:
         # a line break before a lowercase letter is a hard wrap inside a sentence ("has been\nreleased");
-        # other breaks separate headings, menu items and code, which must not glue into prose
-        text = re.sub(r"(?<!:)\n(?=[a-zа-яёіїєґ0-9(\"«])", " ", text)
+        # other breaks separate headings, menu items and code, which must not glue into prose; so do
+        # "label: value" records ("wednesday: English lesson, 16:00") — a timetable, a list of settings
+        text = re.sub(r"(?<!:)\n(?=[a-zа-яёіїєґ0-9(\"«])(?!" + RECORD.pattern + ")", " ", text)
         lines = [line.strip() for line in re.split(r"\n+", text)]
         for li, line in enumerate(lines):
             if line.startswith("§ "):  # section heading, not a sentence
@@ -223,7 +227,10 @@ def sentences(items: list[tuple[str, str]], limit: int = 80) -> list[tuple[str, 
             for s in SENT_SPLIT.split(line):
                 s = s.strip(" _*")  # markdown emphasis leftovers
                 letters = sum(ch.isalpha() for ch in s)
-                if not (40 <= len(s) <= 500 and letters > len(s) * 0.6) or s in seen:
+                # a "label: value" record is short and full of digits, and still content
+                # ("wednesday: English lesson, 16:00-17:30", "Born: April 1, 1815")
+                short_ok = RECORD.match(s) and len(s) >= 12 and letters > len(s) * 0.4
+                if not (short_ok or 40 <= len(s) <= 500 and letters > len(s) * 0.6) or s in seen:
                     continue
                 seen.add(s)
                 if s.endswith(":") and line.endswith(s):
@@ -312,7 +319,41 @@ know the facts, write placeholders instead of guessing. Output only the sentence
 
 
 TRANSLATE_TASK = """Translate each sentence into {lang}, faithfully and literally: do not add, remove
-or explain anything. Keep names, numbers and versions exactly. Return the same number of items."""
+or explain anything. Translate every word in full — including weekday and month names (friday →
+the {lang} word for Friday) — never abbreviate a word or replace it with a different one. Keep names,
+numbers, times and versions exactly. Return the same number of items."""
+
+# calendar words a translation must carry over: English name -> Russian stem (9B rendered "friday" as "пн")
+CALENDAR = {"monday": "понедельн", "tuesday": "вторн", "wednesday": r"сред[аеуы]\b", "thursday": "четверг",
+            "friday": "пятниц", "saturday": "суббот", "sunday": "воскресен", "january": "январ",
+            "february": "феврал", "march": "март", "april": "апрел", "june": "июн", "july": "июл",
+            "august": "август", "september": "сентябр", "october": "октябр", "november": "ноябр",
+            "december": "декабр"}
+
+
+def calendar_keywords(query: str, keywords: str) -> str:
+    """The model's English keywords with the weekdays and months the request actually names: small
+    models drop them ("в среду" -> "schedule") or swap them ("в четверг" -> "wednesday")."""
+    q = query.lower()
+    asked = [en for en, ru in CALENDAR.items() if re.search(rf"\b{ru}", q) or re.search(rf"\b{en}\b", q)]
+    words = [w for w in keywords.split() if w.lower() not in CALENDAR or w.lower() in asked]
+    return " ".join(words + [en for en in asked if en not in (w.lower() for w in words)])
+
+
+def faithful(original: str, translation: str) -> bool:
+    """A translation keeps the facts that are easy to check: the same numbers (times, years, versions)
+    and, between English and Russian, the same weekdays and months. Otherwise show the original only."""
+    if sorted(re.findall(r"\d+", original)) != sorted(re.findall(r"\d+", translation)):
+        return False
+    lo, lt = original.lower(), translation.lower()
+    for en, ru in CALENDAR.items():
+        en_in = lambda text: re.search(rf"\b{en}\b", text)  # noqa: E731
+        ru_in = lambda text: re.search(rf"\b{ru}", text)  # noqa: E731
+        if en_in(lo) and not ru_in(lt) and not en_in(lt):
+            return False
+        if ru_in(lo) and not en_in(lt) and not ru_in(lt):
+            return False
+    return True
 
 
 def translate_schema(n: int) -> dict:

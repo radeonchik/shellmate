@@ -104,3 +104,9 @@
 {"q": "как будет «кошка» по-немецки", "intent": "translate", "pkgs": []}
 {"q": "translate 'спасибо за помощь' into English", "intent": "translate", "pkgs": []}
 {"q": "переведи: the quick brown fox jumps over the lazy dog", "intent": "translate", "pkgs": []}
+{"q": "take a look at my timetable and tell me what do I have to do on wednesday", "intent": "docs", "pkgs": []}
+{"q": "что у меня по расписанию в пятницу", "intent": "docs", "pkgs": []}
+{"q": "найди в моих заметках пароль от вайфая", "intent": "docs", "pkgs": []}
+{"q": "what did I plan for the weekend", "intent": "docs", "pkgs": []}
+{"q": "сколько файлов у меня на рабочем столе и какие их виды", "intent": "files", "pkgs": []}
+{"q": "what is in my downloads folder", "intent": "files", "pkgs": []}

@@ -16,7 +16,7 @@ from pathlib import Path
 
 from shellmate import (config, disk, docs, errors, i18n, llm, news, onboarding, packages, persona, router, runner,
                     state, system, ui, updates, web)
-from shellmate.i18n import t
+from shellmate.i18n import plural, t
 from shellmate.packages import Pkg
 from shellmate.prompts import (CHAT_TASK, TRANSLATE_AGAIN, TRANSLATE_SCHEMA, TRANSLATE_TASK, capabilities,
                                defang, explain_task, lang_of, ui_language)
@@ -339,6 +339,25 @@ class App(SystemSkills, KnowledgeSkills):
             c = cands.pop(i)
             if self.execute([c.cmd], t("очистка: ", "cleanup: ") + c.title) != 0:
                 return 1
+        return 0
+
+    def files(self, it: router.Intent, query: str) -> int:
+        """What is in a folder: counted and grouped by code, the model only names the folder."""
+        root = disk.resolve_path(it.text)
+        kinds, folders, hidden = disk.folder_summary(root)
+        total = sum(len(k.names) for k in kinds)
+        def sample(names: list[str]) -> str:
+            return ", ".join(names[:3]) + (", …" if len(names) > 3 else "")
+        groups = [(k.label, k.names) for k in kinds] + ([(t("папки", "folders"), folders)] if folders else [])
+        nw = max((len(str(len(names))) for _, names in groups), default=1)
+        rows = [(label, f"{ui.bold(str(len(names)).rjust(nw))}  {ui.dim(sample(names))}") for label, names in groups]
+        head = plural(total, ("файл", "файла", "файлов"), ("file", "files")) + ", " + \
+            plural(len(folders), ("папка", "папки", "папок"), ("folder", "folders")) + \
+            (ui.dim(t(f" · скрытых: {hidden}", f" · hidden: {hidden}")) if hidden else "")
+        self.say(f"{docs.short(str(root))}: {head}")
+        if rows:
+            ui.kv(t("Что лежит", "What's inside"), rows, "accent", "▤")
+            print(ui.dim(t("   только сама папка, без вложенных", "   this folder only, not inside subfolders")))
         return 0
 
     def bigfiles(self, it: router.Intent, query: str) -> int:
@@ -666,7 +685,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--color", nargs="?", const="", metavar=t("ЦВЕТ", "COLOR"),
                         help=t("цвет помощника: тема (classic, matrix, sunset…), #hex или без значения — меню",
                                "the assistant's color: a theme (classic, matrix, sunset…), #hex, or nothing for a menu"))
-    parser.add_argument("--add-docs", metavar="DIR", help=t("добавить папку в источники документов", "add a folder to the document sources"))
+    parser.add_argument("--add-docs", metavar="PATH", help=t("добавить папку или файл в источники документов",
+                                                             "add a folder or a file to the document sources"))
     parser.add_argument("--search-setup", action="store_true", help=t("подключить поисковые API и проверить поиск", "connect search APIs and test the search"))
     parser.add_argument("--news", action="store_true", help=t("новости Arch и CachyOS с прошлого обновления", "Arch and CachyOS news since the last update"))
     parser.add_argument("--docs", action="store_true", help=t("показать папки-источники", "show the source folders"))

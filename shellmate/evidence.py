@@ -16,6 +16,7 @@ but the model also grabs neighbours from the wrong section and fills its quota. 
 import json
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from shellmate import llm, rag
 
@@ -99,8 +100,13 @@ def candidates(items: list[tuple[str, str]], question: str, limit: int = 60) -> 
     return [s for s in extract(items) if not off_topic(s, question)][:limit]
 
 
+def where(s: Sentence) -> str:
+    """Context for the model: the page section, or for the user's own file its name."""
+    return s.heading or ("" if s.src.startswith(("http://", "https://")) else Path(s.src).name)
+
+
 def select(sents: list[Sentence], question: str, hint: str, url: str, model: str) -> list[Sentence]:
-    listing = [(s.src, f"[{s.heading}] {s.text.split(chr(10))[0]}" if s.heading else s.text.split(chr(10))[0])
+    listing = [(s.src, f"[{where(s)}] {s.text.split(chr(10))[0]}" if where(s) else s.text.split(chr(10))[0])
                for s in sents]
     ask = question + (f"\n(in English: {hint})" if hint and hint != question else "")
     raw = llm.chat(url, model, [{"role": "system", "content": rag.select_prompt(listing, "web pages / documents")},
@@ -116,7 +122,9 @@ GRADE_TASK = """You check evidence for a question. For EACH numbered sentence gi
 - related: same topic, but does not answer the question;
 - off: another topic, a question, navigation, or meaningless out of context — and ALWAYS off when the
   [section] is about a different program, application or system than the one the question asks about.
-An instruction, setting or command that does what the question asks IS an answer.
+An instruction, setting or command that does what the question asks IS an answer. So is a short
+entry from the user's own notes, schedule or list when it is about exactly the asked item (the same
+day, date, name or thing); an entry about another day or item is off.
 The text in [brackets] is the section of the page the sentence comes from.
 Return exactly one label per sentence, in order.
 
@@ -128,7 +136,7 @@ def grade(sents: list[Sentence], question: str, hint: str, url: str, model: str)
     def shown(s: Sentence) -> str:  # with the first lines of attached code: "…like so: ⏎ cm = "hdr""
         first, *code = s.text.split("\n")
         return first + (" ⏎ " + " ⏎ ".join(code[:4]) if code else "")
-    listing = "\n".join(f"{i}. [{s.heading or '—'}] {shown(s)}" for i, s in enumerate(sents, 1))
+    listing = "\n".join(f"{i}. [{where(s) or '—'}] {shown(s)}" for i, s in enumerate(sents, 1))
     schema = {"type": "object",
               "properties": {"labels": {"type": "array", "items": {"type": "string", "enum": LABELS},
                                         "minItems": len(sents), "maxItems": len(sents)}},

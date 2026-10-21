@@ -25,5 +25,13 @@ def t(ru: str, en: str) -> str:
     return en if LANG == "en" else ru
 
 
+def plural(n: int, ru: tuple[str, str, str], en: tuple[str, str]) -> str:
+    """"1 файл / 2 файла / 5 файлов", "1 file / 2 files"."""
+    if LANG == "en":
+        return f"{n} {en[0] if n == 1 else en[1]}"
+    form = 0 if n % 10 == 1 and n % 100 != 11 else 1 if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else 2
+    return f"{n} {ru[form]}"
+
+
 def en() -> bool:
     return LANG == "en"
