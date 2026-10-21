@@ -110,30 +110,42 @@ class KnowledgeSkills:
         # and a wrong fact (another weekday, a changed number) is worse than no translation
         return [x if _cyrillic(x) == want_cyr and rag.faithful(o, x) else o for x, o in zip(out, texts)]
 
-    def from_trusted(self, question: str, query_en: str) -> bool:
-        """Favored wikis first. True if they answered (quotes already printed)."""
-        with ui.working(t("ищу в официальных вики…", "searching the official wikis…")):
-            items, titles = trusted.gather(question, query_en, self.trusted_domains, self.cfg.searx_url)
-        if items and self._answer(question, items, "excerpts of OFFICIAL documentation wikis", titles, quiet_empty=True,
-                                  hint=query_en):
+    def from_trusted(self, question: str, query_en: str, domains: list[str] | None = None) -> bool:
+        """Favored wikis first (the Linux wikis for how-to questions, Wikipedia for facts).
+        True if they answered (quotes already printed)."""
+        domains = self.trusted_domains if domains is None else domains
+        names = ", ".join(dict.fromkeys(s.name for s in trusted.sites_for(f"{question} {query_en}", domains)))
+        with ui.working(t(f"ищу в вики ({names})…", f"searching the wikis ({names})…")), ThreadPoolExecutor(1) as ex:
+            shape = ex.submit(self._answer_shape, question)  # the model writes while the wikis are read
+            items, titles = trusted.gather(question, query_en, domains, self.cfg.searx_url, shape=shape)
+        official = "OFFICIAL documentation wikis" if set(domains) & set(self.trusted_domains) else "Wikipedia articles"
+        if items and self._answer(question, items, f"excerpts of {official}", titles, quiet_empty=True, hint=query_en):
             return True
-        self.say(ui.dim(t("в официальных вики прямого ответа нет", "no direct answer in the official wikis")))
+        self.say(ui.dim(t(f"в вики ({names}) прямого ответа нет", f"no direct answer in the wikis ({names})")))
         return False
 
     def web(self, it, query: str) -> int:
         q = it.text or query
-        if trusted.is_howto(query) and self.from_trusted(query, q):
+        # how-to: the Linux wikis, then Wikipedia; facts: Wikipedia; news and prices: only the web
+        domains = (self.trusted_domains if trusted.is_howto(query) else []) + \
+            ([] if trusted.is_news(query) else [trusted.WIKIPEDIA])
+        if domains and self.from_trusted(query, q, domains):
             return 0
         return 0 if self.from_web(query, q, loud=True) else 1
 
     def _answer_shape(self, question: str) -> str:
-        """What an answer usually looks like — only for ranking page chunks (see rag.ANSWER_SHAPE_TASK)."""
-        try:
-            return llm.chat(self.cfg.ollama_url, self.cfg.model,
-                            [{"role": "system", "content": rag.ANSWER_SHAPE_TASK},
-                             {"role": "user", "content": question}], timeout=30)[:400]
-        except llm.LLMError:
-            return ""
+        """What an answer usually looks like — only for ranking page chunks (see rag.ANSWER_SHAPE_TASK).
+        Remembered per question: the wikis and then the web search use the same one."""
+        shapes = self.__dict__.setdefault("_shapes", {})
+        if question not in shapes:
+            try:
+                shapes[question] = llm.chat(self.cfg.ollama_url, self.cfg.model,
+                                            [{"role": "system", "content": rag.ANSWER_SHAPE_TASK},
+                                             {"role": "user", "content": f"Question: {question}\nEnglish answer:"}],
+                                            timeout=30)[:400]
+            except llm.LLMError:
+                shapes[question] = ""
+        return shapes[question]
 
     def from_web(self, question: str, q: str, loud: bool = False, cache: bool = True) -> bool:
         """Open web search. loud: report 'nothing found' to the user instead of failing silently."""

@@ -148,6 +148,7 @@ def model_step(cfg: config.Config) -> None:
             f"{ui.dim('$')} sudo systemctl enable --now ollama",
             t("потом ещё раз: ", "then again: ") + f"{ui.dim('$')} {cfg.name} --pick-model"], "warn", "!")
         return
+    _offer_limits()
     ans = _prompt(t("Enter — взять рекомендованную, номер — другую ", "Enter — take the recommended one, a number — another ")
                   + ui.dim(t("(сейчас: ", "(now: ") + cfg.model + ")") + ": ")
     pick = fits[int(ans) - 1] if ans.isdigit() and 1 <= int(ans) <= len(fits[:5]) else best
@@ -165,6 +166,25 @@ def model_step(cfg: config.Config) -> None:
     cfg.model = pick.cand.tag
     ui.say(cfg.name, ui.green(t("модель: ", "model: ") + cfg.model))
     _offer_big_model(cfg, fits)
+
+
+def _offer_limits() -> None:
+    """Ollama's prompt cache may grow to 8 GB of RAM until the system kills it (hardware.OLLAMA_LIMITS)."""
+    if not hardware.ollama_limits_missing():
+        return
+    ui.panel(t("Ограничить память Ollama", "Limit Ollama's memory"), [
+        t("Внутри Ollama кэш промптов по умолчанию может занять до 8 ГБ оперативной памяти, и при поиске",
+          "Inside Ollama the prompt cache may take up to 8 GB of RAM by default; when searching the web it"),
+        t("в интернете он растёт, пока система не убьёт Ollama. Ограничу его 1 ГБ — скорость не пострадает.",
+          "grows until the system kills Ollama. I'll limit it to 1 GB — speed doesn't suffer."),
+    ], "accent2", "◆")
+    cmd = hardware.ollama_limits_cmd()
+    if ui.confirm(cmd, t("Применить (перезапустит Ollama)?", "Apply (restarts Ollama)?")):
+        code, _ = runner.run(cmd)
+        if code != 0:
+            ui.problem(t("не получилось — Ollama работает без ограничения", "that failed — Ollama runs without the limit"))
+        else:
+            hardware.wait_for_ollama()
 
 
 def _offer_big_model(cfg: config.Config, fits: list) -> None:

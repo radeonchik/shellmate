@@ -7,6 +7,7 @@ wiki also has its own lookup that doesn't depend on them:
 - Hextra sites (Hyprland Wiki): the site's full-text search index, cached locally;
 - anything else: page addresses from the sitemap, cached locally."""
 
+import hashlib
 import json
 import os
 import re
@@ -26,6 +27,7 @@ class Site:
     keywords: tuple[str, ...] = ()  # only consulted when the question mentions one; empty = always
     mediawiki: bool = False  # clean article HTML via action=render + API title search
     index: str = ""  # path of a Hextra full-text search index (no page fetching needed)
+    wikipedia: bool = False  # full-text search + plain-text extracts through the Wikipedia API
 
 
 KNOWN = {
@@ -36,7 +38,10 @@ KNOWN = {
     "documentation.ubuntu.com": Site("Ubuntu Docs", "documentation.ubuntu.com"),
     "help.ubuntu.com": Site("Ubuntu Help", "help.ubuntu.com"),
     "docs.fedoraproject.org": Site("Fedora Docs", "docs.fedoraproject.org"),
+    # general knowledge: its own search beats web engines for facts, and costs no search credits
+    "en.wikipedia.org": Site("Wikipedia", "en.wikipedia.org", wikipedia=True),
 }
+WIKIPEDIA = "en.wikipedia.org"
 # per distribution: its own docs first; ArchWiki is the best general Linux reference anywhere
 # (its pacman-specific lines are filtered out on other distros by evidence.off_topic)
 FAMILY_DOMAINS = {
@@ -59,18 +64,23 @@ CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "shel
 MAX_AGE = 3 * 86400
 
 # questions where documentation beats news: how-to, errors, configuration, "why doesn't X work"
-HOWTO = re.compile(r"\b(как|почему|зачем|что такое|что значит|ошибк|не работа|настро|включ|выключ|"
+HOWTO = re.compile(r"\b(как(?!\w)|почему|зачем|что такое|что значит|ошибк|не работа|настро|включ|выключ|"
                    r"установ|удал|исправ|почин|чинить|очист|how|why|what is|error|fail|config|setup|"
                    r"enable|disable|install|fix|broken|not working|clean)", re.I)
 NEWSY = re.compile(r"(новост|пишут|говорят|мнени|обзор|вышл|выйдет|релиз|цена|стоит|news|review|"
                    r"release date|price|announc)", re.I)
 STOP = set("how to the a an in on of for and or with my me is are do does can i you it this that "
            "what why when where which use using enable disable configure configuration config setup "
-           "set command commands fix way best".split())
+           "set command commands fix way best difference differences between versus vs compare comparison "
+           "stand".split())
 
 
 def is_howto(text: str) -> bool:
     return bool(HOWTO.search(text)) and not NEWSY.search(text)
+
+
+def is_news(text: str) -> bool:
+    return bool(NEWSY.search(text))
 
 
 def sites_for(text: str, domains: list[str]) -> list[Site]:
@@ -165,6 +175,74 @@ def _mediawiki_titles(domain: str, words: list[str]) -> list[str]:
     return ranked
 
 
+# --- Wikipedia ------------------------------------------------------------------------------------
+
+WIKI_SKIP = re.compile(r"^(?:References|Notes|Citations|Sources|Bibliography|External links|See also|"
+                       r"Further reading|Footnotes|Works cited)$", re.I)
+
+
+def _wikipedia_api(**params) -> dict:
+    """Wikimedia asks programs to name themselves (anonymous browser-like agents get rate-limited
+    first) and to not repeat requests: answers are cached for three days."""
+    from shellmate import updates
+    query = urllib.parse.urlencode({**params, "format": "json"})
+    agent = f"shellmate/{updates.version()} (https://github.com/radeonchik/shellmate; terminal assistant)"
+    key = hashlib.sha1(query.encode()).hexdigest()[:16]
+    body = _cached(WIKIPEDIA, f"api-{key}.json",
+                   lambda: web.get(f"https://{WIKIPEDIA}/w/api.php?{query}", 10, headers={"User-Agent": agent})[1])
+    if body is None:
+        raise OSError("Wikipedia did not answer")
+    return json.loads(body)
+
+
+def _wikipedia_pages(query_en: str, n: int) -> list[web.Result]:
+    """Full-text search ranks articles by relevance ("Pushkin birth and death years" -> Alexander Pushkin)."""
+    # the whole phrase and its meaningful words both miss sometimes ("why is the sky blue" -> Diffuse sky
+    # radiation, its words -> the colour Sky blue; "what does DNA stand for" -> a TV series, its words -> DNA):
+    # the best article of each. The search wants every word in an article: fewer words if none matches.
+    words = keywords(query_en)
+    rankings = []
+    for variants in ([query_en], [" ".join(words), " ".join(words[:2])]):
+        for terms in variants:
+            if not terms:
+                continue
+            try:
+                hits = _wikipedia_api(action="query", list="search", srsearch=terms, srlimit=n + 2)["query"]["search"]
+            except (OSError, ValueError, KeyError):
+                hits = []
+            hits = [h["title"] for h in hits if not h["title"].startswith("List of")
+                    and "(disambiguation)" not in h["title"]]
+            if hits:
+                rankings.append(hits)
+                break
+    titles = list(dict.fromkeys(t for row in zip(*rankings) for t in row) if len(rankings) > 1
+                  else (rankings[0] if rankings else []))[:n]
+    return [web.Result(t, f"https://{WIKIPEDIA}/wiki/{urllib.parse.quote(t.replace(' ', '_'))}") for t in titles]
+
+
+def _wikipedia_text(title: str) -> str:
+    """The article as plain text, "== Section ==" turned into the "§ Title › Section" lines rag.chunks keeps."""
+    try:
+        pages = _wikipedia_api(action="query", prop="extracts", explaintext=1, exsectionformat="wiki",
+                               titles=title, redirects=1)["query"]["pages"]
+        text = next(iter(pages.values())).get("extract", "")
+    except (OSError, ValueError, KeyError, StopIteration):
+        return ""
+    out, path, skip = [], [title], False
+    for line in text.splitlines():
+        m = re.fullmatch(r"(=+)\s*(.*?)\s*=+", line.strip())
+        if m:
+            level = len(m.group(1)) - 1  # "== A ==" is level 1, under the article title
+            path = path[:level] + [m.group(2)]
+            skip = any(WIKI_SKIP.match(p) for p in path[1:])
+            out.append("\n§ " + " › ".join(path) + "\n")
+        elif not skip:
+            out.append(line)
+    # pronunciations are dropped from extracts, leaving "Deoxyribonucleic acid (; DNA) is…"
+    text = re.sub(r"\(\s*[;,]\s*", "(", "\n".join(out))
+    return re.sub(r"\s*\(\s*\)", "", text)
+
+
 def _sitemap_urls(domain: str) -> list[str]:
     def fetch() -> str:
         for path in ("/sitemap.xml", "/sitemap-index.xml"):
@@ -194,6 +272,8 @@ def _local_pages(site: Site, words: list[str], n: int) -> list[web.Result]:
 
 
 def _page_text(r: web.Result, site: Site) -> str:
+    if site.wikipedia:
+        return _wikipedia_text(r.title)
     if site.mediawiki:
         m = re.search(r"/title/([^?#]+)", r.url)
         if m:  # article body only, keeps code blocks as lines (better than any extracted text)
@@ -207,17 +287,25 @@ def _page_text(r: web.Result, site: Site) -> str:
 
 
 def gather(question: str, query_en: str, domains: list[str], searx_url: str = "",
-           pages_per_site: int = 2) -> tuple[list[tuple[str, str]], dict[str, str]]:
-    """Ranked chunks from the favored wikis that are relevant to the question, plus titles."""
+           pages_per_site: int = 2, shape="") -> tuple[list[tuple[str, str]], dict[str, str]]:
+    """Ranked chunks from the favored wikis that are relevant to the question, plus titles.
+    shape: a sketch of the answer for ranking (rag.ANSWER_SHAPE_TASK), or a Future of one that is
+    still being written while the pages download."""
     words = keywords(query_en) or keywords(question)
     query = f"{question} {query_en}"
     per_site: dict[Site, list[tuple[str, str]]] = {}
     titles: dict[str, str] = {}
     fetch: list[tuple[str, Site]] = []
+    leads: list[tuple[str, str]] = []
     for site in sites_for(query, domains):
         if site.index:
             items, t = _index_chunks(site)
             per_site[site], titles = items, {**titles, **t}
+            continue
+        if site.wikipedia:
+            for r in _wikipedia_pages(query_en or question, pages_per_site):
+                fetch.append((r, site))
+                titles[r.url] = f"Wikipedia: {r.title}"
             continue
         try:  # a search engine knows relevance best — when it isn't rate-limited
             results = [r for r in web.search(query_en, searx_url, n=6, domains=[site.domain])
@@ -233,10 +321,14 @@ def gather(question: str, query_en: str, domains: list[str], searx_url: str = ""
         with ThreadPoolExecutor(max_workers=len(fetch)) as ex:
             texts = list(ex.map(lambda f: _page_text(*f), fetch))
         for (r, site), text in zip(fetch, texts):
-            per_site.setdefault(site, []).extend((r.url, c) for c in rag.chunks(text))
+            parts = rag.chunks(text)
+            per_site.setdefault(site, []).extend((r.url, c) for c in parts)
+            if site.wikipedia and parts:  # the lead is the article's summary: dates, definitions, who and what
+                leads.append((r.url, parts[0]))
     # rank within each site, then topic-specific wikis (Hyprland for a Hyprland question) go
     # before the general one, so ArchWiki's KDE section doesn't win a Hyprland question
     ordered = sorted((s for s in per_site if per_site[s]), key=lambda s: not s.keywords)
     k = 4 if len(ordered) > 1 else 6
-    items = [it for s in ordered for it in rag.rank(query, per_site[s], k=k)]
-    return items, titles
+    shape = shape.result() if hasattr(shape, "result") else shape
+    items = [it for s in ordered for it in rag.rank_many([query, shape], per_site[s])[:k]]
+    return list(dict.fromkeys(leads + items)), titles

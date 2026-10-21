@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.2
+
+- Answers to general questions much better: on 30 questions from history, philosophy, science,
+  geography, sports, cooking and Linux (`eval/web_eval.py`, the real path end to end) 21 → 28 right,
+  median time ~6 s → 4.6 s.
+  - Wikipedia is a favored source for facts: its own search (no search credits, no keys), searched by
+    the whole phrase and by the meaningful words, the article's lead always considered. Linux how-to
+    still goes to ArchWiki / Hyprland Wiki first; news and prices only to the web.
+  - “какая …” was taken for a how-to question (“как”) and sent to the Linux wikis.
+  - The answer sketch used for ranking is always in English (9B wrote it in the question's language).
+  - Recipes, formulas and other everyday questions go to the search, not “can't do that”.
+  - A hesitant “off” for the sentence the model itself picked first no longer drops a right answer.
+- Ollama's memory: llama.cpp inside it keeps up to 8 GB of prompt cache by default, and with web
+  answers systemd-oomd killed it. The setup (and `get.sh`) offers a 1 GB limit through the service's
+  environment; a dropped connection now says what happened instead of a Python traceback.
+- Wikipedia API calls name shellmate in their User-Agent and are cached for three days.
+
 ## 0.3.1
 
 - Questions about your own files that don't say "documents": “take a look at my timetable, what do I

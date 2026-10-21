@@ -315,7 +315,8 @@ def drop_near_duplicates(quotes: list[tuple[str, str]], threshold: float = 0.6) 
 ANSWER_SHAPE_TASK = """Write one or two short sentences in English the way an encyclopedia or official
 documentation would answer the question, using the words such an answer typically contains (for dates:
 born, died, began, ended, released; for software: the setting, option or command names). If you don't
-know the facts, write placeholders instead of guessing. Output only the sentences."""
+know the facts, write placeholders instead of guessing. Always write in English, whatever the language
+of the question — the pages are mostly English. Output only the sentences."""
 
 
 TRANSLATE_TASK = """Translate each sentence into {lang}, faithfully and literally: do not add, remove

@@ -68,6 +68,15 @@ gpu_kind() {
     echo vulkan
 }
 
+# llama.cpp inside Ollama may keep up to 8 GB of RAM as prompt cache (+32 checkpoints): on a laptop the
+# system kills Ollama mid-answer. Same values as shellmate/hardware.py OLLAMA_LIMITS.
+limit_memory() {
+    on_tty sudo mkdir -p /etc/systemd/system/ollama.service.d &&
+        printf '[Service]\nEnvironment=LLAMA_ARG_CACHE_RAM=1024\nEnvironment=LLAMA_ARG_CTX_CHECKPOINTS=4\n' |
+        sudo tee /etc/systemd/system/ollama.service.d/shellmate-memory.conf >/dev/null &&
+        sudo systemctl daemon-reload && sudo systemctl restart ollama
+}
+
 # Ollama's Vulkan backend is switched on per service
 enable_vulkan() {
     on_tty sudo mkdir -p /etc/systemd/system/ollama.service.d &&
@@ -126,6 +135,11 @@ main() {
     if [ -n "$installed" ] && [ "$gpu" = vulkan ]; then
         say "$(m "Видеокарта AMD старше RDNA2: включаю в Ollama Vulkan (ROCm её не поддерживает)" "An AMD GPU older than RDNA2: enabling Vulkan in Ollama (ROCm doesn't support it)")"
         enable_vulkan || warn "$(m "не получилось включить Vulkan — модель будет работать на процессоре" "couldn't enable Vulkan — the model will run on the CPU")"
+    fi
+    if has systemctl && [ "$(systemctl show ollama -p LoadState --value 2>/dev/null)" = loaded ] &&
+        ! systemctl show ollama -p Environment --value | grep -q LLAMA_ARG_CACHE_RAM &&
+        ask "$(m "Ограничить кэш Ollama 1 ГБ памяти (иначе может разрастись до 8 ГБ, нужен sudo)?" "Limit Ollama's cache to 1 GB of RAM (otherwise it may grow to 8 GB, needs sudo)?")" Y; then
+        limit_memory || warn "$(m "не получилось ограничить память Ollama" "couldn't limit Ollama's memory")"
     fi
     has ollama || warn "$(m "Без Ollama shellmate не заработает: https://ollama.com/download/linux" "shellmate won't work without Ollama: https://ollama.com/download/linux")"
 

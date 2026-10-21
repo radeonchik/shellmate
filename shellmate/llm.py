@@ -1,5 +1,6 @@
 """Minimal Ollama client (stdlib only)."""
 
+import http.client
 import json
 import math
 import shutil
@@ -53,6 +54,14 @@ def chat_full(url: str, model: str, messages: list[dict], schema: dict | None = 
             hint = t("Ollama установлена, но не запущена. Запусти:", "Ollama is installed but not running. Start it:") + \
                 "\n  sudo systemctl enable --now ollama"
         raise LLMError(t(f"нет связи с Ollama ({url}: {e.reason}).", f"can't reach Ollama ({url}: {e.reason}).") + f"\n{hint}") from e
+    except (http.client.HTTPException, ConnectionError, TimeoutError) as e:
+        # dropped mid-answer: most often the system killed Ollama for memory (see hardware.OLLAMA_LIMITS)
+        from shellmate import hardware
+        hint = t("Ограничить её память: ", "To limit its memory: ") + hardware.ollama_limits_cmd()[2] \
+            if hardware.ollama_limits_missing() else t("попробуй ещё раз", "try again")
+        raise LLMError(t("Ollama оборвала ответ — чаще всего её остановила система из-за нехватки памяти.",
+                         "Ollama dropped the answer — most often the system stopped it for lack of memory.")
+                       + f"\n{hint}") from e
 
 
 def _post(url: str, body: dict, timeout: float) -> dict:

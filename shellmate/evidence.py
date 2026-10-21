@@ -124,7 +124,8 @@ GRADE_TASK = """You check evidence for a question. For EACH numbered sentence gi
   [section] is about a different program, application or system than the one the question asks about.
 An instruction, setting or command that does what the question asks IS an answer. So is a short
 entry from the user's own notes, schedule or list when it is about exactly the asked item (the same
-day, date, name or thing); an entry about another day or item is off.
+day, date, name or thing); an entry about another day or item is off. A sentence that spells out an
+abbreviation's full name answers what the abbreviation stands for or means.
 The text in [brackets] is the section of the page the sentence comes from.
 Return exactly one label per sentence, in order.
 
@@ -186,6 +187,10 @@ def pick(items: list[tuple[str, str]], question: str, hint: str, url: str, model
     if not picked:
         return Evidence([], [])
     labels, probs = grade(picked, question, hint, url, model)
+    # the selection's first pick is what the model called the best answer; a hesitant "off" for it
+    # (9B: 0.46 for "Deoxyribonucleic acid (DNA) is…" on "what does DNA stand for") is the slip, not the pick
+    if labels and labels[0] == "off" and probs[0] < 0.5:
+        labels[0], probs[0] = "answer", 1 - probs[0]
     answers, related, per, conf = [], [], {}, 1.0
     def repeats(s: Sentence) -> bool:  # the search snippet often repeats the page's own sentence
         key = _norm(s.text.split("\n", 1)[0])

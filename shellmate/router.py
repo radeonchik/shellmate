@@ -50,8 +50,9 @@ intent:
 - web: the user explicitly asks to search the internet; asks about news, releases, prices or
   other current facts about the world; asks ANY factual question that can be looked up —
   history, people, places, science, nature, dates and numbers ("годы жизни толстого",
-  "столица канады", "почему трава зелёная"); or asks HOW to do / configure something on Linux
-  that is not one of the actions above (Hyprland settings, autologin, HDR, keyboard layout...).
+  "столица канады", "почему трава зелёная"), rules, formulas, recipes, how things work in everyday
+  life; or asks HOW to do / configure something on Linux that is not one of the actions above
+  (Hyprland settings, autologin, HDR, keyboard layout...).
   Not for checking this computer's own connection.
 - docs: the user asks about THEIR OWN things kept in their files — documents, notes, a timetable or
   schedule, plans, lists, recipes, anything "my …" that only their files can know ("что у меня
@@ -137,6 +138,9 @@ EXAMPLES = [
     ("как настроить автологин в sddm", _ex("web", text="sddm autologin configuration")),
     ("годы жизни толстого", _ex("web", text="Leo Tolstoy birth and death years")),
     ("кто изобрёл радио", _ex("web", text="who invented the radio")),
+    ("как завязать галстук", _ex("web", text="how to tie a tie")),
+    ("рецепт борща", _ex("web", text="borscht recipe")),
+    ("что гласит теорема Пифагора", _ex("web", text="Pythagorean theorem statement")),
     ("добавь папку ~/Documents в источники", _ex("docs", text="~/Documents", action="add")),
     ("что у меня в заметках про настройку роутера", _ex("docs", text="router setup notes")),
     ("check my shopping list, do I need milk", _ex("docs", text="shopping list milk")),

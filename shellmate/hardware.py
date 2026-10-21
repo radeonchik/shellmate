@@ -209,6 +209,40 @@ def ollama_install(hw: Hardware | None = None) -> str:
     return backends.current().ollama_install(gpu)
 
 
+# llama.cpp inside Ollama keeps a prompt cache of up to 8 GB of RAM plus 32 context checkpoints of
+# ~50 MB each by default. Web answers send a new long prompt every time, the cache only grows, and
+# on a 15 GB laptop systemd-oomd killed Ollama mid-answer (Oct 2026). These limits keep the router's
+# prompt cached (that's what makes it fast) and nothing much more.
+OLLAMA_LIMITS = {"LLAMA_ARG_CACHE_RAM": "1024", "LLAMA_ARG_CTX_CHECKPOINTS": "4"}
+LIMITS_CONF = "/etc/systemd/system/ollama.service.d/shellmate-memory.conf"
+
+
+def ollama_limits_missing() -> bool:
+    """The systemd service of Ollama runs without the memory limits above (False if it isn't a service)."""
+    if not shutil.which("systemctl"):
+        return False
+    env = run_quiet(["systemctl", "show", "ollama", "-p", "Environment", "--value"])
+    loaded = run_quiet(["systemctl", "show", "ollama", "-p", "LoadState", "--value"]).strip()
+    return loaded == "loaded" and any(f"{k}=" not in env for k in OLLAMA_LIMITS)
+
+
+def ollama_limits_cmd() -> list[str]:
+    body = "[Service]\\n" + "".join(f"Environment={k}={v}\\n" for k, v in OLLAMA_LIMITS.items())
+    return ["sh", "-c", f"sudo mkdir -p {Path(LIMITS_CONF).parent} && printf '{body}' | sudo tee {LIMITS_CONF} >/dev/null"
+                        " && sudo systemctl daemon-reload && sudo systemctl restart ollama"]
+
+
+def wait_for_ollama(url: str = "http://127.0.0.1:11434", seconds: float = 15) -> bool:
+    """After a restart the service takes a moment to listen again."""
+    import time
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if ollama_running(url):
+            return True
+        time.sleep(0.5)
+    return False
+
+
 def ollama_running(url: str) -> bool:
     try:
         with urllib.request.urlopen(url.rstrip("/") + "/api/version", timeout=2):
