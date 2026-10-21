@@ -13,6 +13,7 @@ shellmate what takes up so much disk space    shellmate which package has the co
 shellmate system info                     shellmate who is using port 8080
 shellmate how to enable hdr in hyprland   shellmate search the web for when kernel 7.3 comes out
 shellmate add ~/Documents to sources      shellmate what do my notes say about the router
+shellmate translate “good morning” into Spanish   cat notes.txt | shellmate translate to English
 sudo apt install foo 2>&1 | shellmate explain
 ```
 

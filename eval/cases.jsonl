@@ -91,3 +91,16 @@
 {"q": "отмени что ты сейчас сделал", "intent": "undo", "pkgs": []}
 {"q": "верни как было", "intent": "undo", "pkgs": []}
 {"q": "покажи историю действий", "intent": "history", "pkgs": []}
+{"q": "годы жизни пушкина", "intent": "web", "pkgs": []}
+{"q": "когда началась вторая мировая война", "intent": "web", "pkgs": []}
+{"q": "кто такой Бисмарк", "intent": "web", "pkgs": []}
+{"q": "столица австралии", "intent": "web", "pkgs": []}
+{"q": "сколько живут кошки", "intent": "web", "pkgs": []}
+{"q": "почему небо голубое", "intent": "web", "pkgs": []}
+{"q": "who invented the telephone", "intent": "web", "pkgs": []}
+{"q": "население японии", "intent": "web", "pkgs": []}
+{"q": "переведи на английский «доброе утро»", "intent": "translate", "pkgs": []}
+{"q": "посчитай 15% от 2400", "intent": "unknown", "pkgs": []}
+{"q": "как будет «кошка» по-немецки", "intent": "translate", "pkgs": []}
+{"q": "translate 'спасибо за помощь' into English", "intent": "translate", "pkgs": []}
+{"q": "переведи: the quick brown fox jumps over the lazy dog", "intent": "translate", "pkgs": []}

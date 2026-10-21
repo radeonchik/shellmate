@@ -167,6 +167,10 @@ class Evidence:
     confidence: float = 1.0  # lowest label probability among the accepted answers
 
 
+def _norm(text: str) -> str:
+    return re.sub(r"\W+", " ", text.lower()).strip()
+
+
 def pick(items: list[tuple[str, str]], question: str, hint: str, url: str, model: str,
          max_quotes: int = 4, per_source: int = 3) -> Evidence:
     cands = candidates(items, f"{question} {hint}")
@@ -175,7 +179,13 @@ def pick(items: list[tuple[str, str]], question: str, hint: str, url: str, model
         return Evidence([], [])
     labels, probs = grade(picked, question, hint, url, model)
     answers, related, per, conf = [], [], {}, 1.0
+    def repeats(s: Sentence) -> bool:  # the search snippet often repeats the page's own sentence
+        key = _norm(s.text.split("\n", 1)[0])
+        return any(key in _norm(o.text.split("\n", 1)[0]) or _norm(o.text.split("\n", 1)[0]) in key
+                   for o in answers + related)
     for s, label, p in zip(picked, labels, probs):
+        if repeats(s):
+            continue
         if label == "answer" and per.get(s.src, 0) < per_source and len(answers) < max_quotes:
             per[s.src] = per.get(s.src, 0) + 1
             answers.append(s)

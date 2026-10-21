@@ -197,7 +197,9 @@ def _page_text(r: web.Result, site: Site) -> str:
     if site.mediawiki:
         m = re.search(r"/title/([^?#]+)", r.url)
         if m:  # article body only, keeps code blocks as lines (better than any extracted text)
-            return web.fetch_text(f"https://{site.domain}/index.php?title={m.group(1)}&action=render")
+            body = web.fetch_text(f"https://{site.domain}/index.php?title={m.group(1)}&action=render")
+            if body:  # render can fail on the wiki's side (ArchWiki answered 502 in Oct 2026): the full page
+                return body
     return r.text or web.fetch_text(r.url)
 
 

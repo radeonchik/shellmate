@@ -11,7 +11,7 @@ from shellmate.i18n import t
 
 INTENTS = ["install", "remove", "search", "update", "downgrade", "disk", "bigfiles", "health",
            "service", "processes", "pkginfo", "sysinfo", "network", "web", "docs", "explain",
-           "theme", "news", "undo", "history", "chat", "unknown"]
+           "theme", "news", "undo", "history", "translate", "chat", "unknown"]
 ACTIONS = ["", "status", "start", "stop", "restart", "enable", "disable", "kill", "add", "remove"]
 
 SCHEMA = {
@@ -46,8 +46,10 @@ intent:
 - network: the internet connection of THIS computer: is it working, IP address, Wi-Fi, DNS,
   which program uses a port.
 - web: the user explicitly asks to search the internet; asks about news, releases, prices or
-  other current facts about the world; or asks HOW to do / configure something on Linux that is
-  not one of the actions above (Hyprland settings, autologin, HDR, keyboard layout...).
+  other current facts about the world; asks ANY factual question that can be looked up —
+  history, people, places, science, nature, dates and numbers ("годы жизни толстого",
+  "столица канады", "почему трава зелёная"); or asks HOW to do / configure something on Linux
+  that is not one of the actions above (Hyprland settings, autologin, HDR, keyboard layout...).
   Not for checking this computer's own connection.
 - docs: the user asks about THEIR OWN documents / notes / files content, or adds or removes a
   folder as a source of documents.
@@ -56,6 +58,8 @@ intent:
 - news: news of the user's Linux distribution itself (announcements, updates needing manual intervention).
 - undo: undo / revert what the ASSISTANT did last, no package named ("отмени", "верни как было").
 - history: what the assistant has done recently.
+- translate: translate a word, phrase or text into another language ("переведи на английский…",
+  "как будет «кошка» по-немецки").
 - chat: greetings, thanks, small talk, or questions about the assistant itself.
 - unknown: any other task (math, poems, writing code, tasks not listed above).
 
@@ -75,6 +79,7 @@ text:
   but web questions can be about anything: never add the distro name unless the user mentioned it.
 - docs: the user's question about their documents, or the folder path when adding/removing.
 - explain: the error or term, copied verbatim.
+- translate: the text to translate, copied verbatim (without "переведи…").
 - theme: the color the user wants, as they said it (or a #hex), else "".
 - otherwise "".
 
@@ -118,10 +123,13 @@ EXAMPLES = [
     ("в каком пакете команда convert", _ex("pkginfo", text="convert")),
     ("какая у меня видеокарта и драйвер", _ex("sysinfo")),
     ("кто занял порт 8080", _ex("network", text="8080")),
+    ("переведи на испанский «где вокзал»", _ex("translate", text="где вокзал")),
     ("интернет вообще работает", _ex("network")),
     ("найди в интернете, когда выйдет ядро 7.3", _ex("web", text="linux kernel 7.3 release date")),
     ("что пишут про переписывание питона на плюсах", _ex("web", text="Python rewrite in C++ discussion")),
     ("как настроить автологин в sddm", _ex("web", text="sddm autologin configuration")),
+    ("годы жизни толстого", _ex("web", text="Leo Tolstoy birth and death years")),
+    ("кто изобрёл радио", _ex("web", text="who invented the radio")),
     ("добавь папку ~/Documents в источники", _ex("docs", text="~/Documents", action="add")),
     ("что у меня в заметках про настройку роутера", _ex("docs", text="настройка роутера")),
     ("что значит error: failed to commit transaction (conflicting files)",

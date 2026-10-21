@@ -16,6 +16,7 @@ from shellmate.i18n import t
 
 _COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
 _TRUECOLOR = os.environ.get("COLORTERM", "") in ("truecolor", "24bit")
+SGR = re.compile(r"\x1b\[[0-9;]*m")  # colors and styles (not cursor moves or links)
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\]8;[^\x1b]*\x1b\\")
 
 THEME = {
@@ -197,12 +198,18 @@ def wrap(line: str, w: int) -> list[str]:
         and not first[:1].isalpha()
     hang = indent + (width(first) + 1 if is_marker else 0)
     out, cur = [], " " * indent
+    active: list[str] = []  # styles switched on so far: a continuation line opens them again
     for word in line[indent:].split(" ") if line.startswith(" " * indent) else line.split(" "):
         if cur.strip() and width(cur) + 1 + width(word) > w:
             out.append(cur + ("\x1b[0m" if _COLOR else ""))
-            cur = " " * hang + word
+            cur = " " * hang + "".join(active) + word
         else:
             cur = f"{cur} {word}" if cur.strip() else cur + word
+        for code in SGR.findall(word):
+            if code in ("\x1b[0m", "\x1b[m"):
+                active.clear()
+            else:
+                active.append(code)
     out.append(cur)
     return out
 

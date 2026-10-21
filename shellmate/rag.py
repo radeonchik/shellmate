@@ -170,6 +170,19 @@ def rank(query: str, items: list[tuple[str, str]], k: int = 6) -> list[tuple[str
     return [items[i] for s, i in scored[:k] if s > 0] or items[:k]
 
 
+def rank_many(queries: list[str], items: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """All items, interleaving the rankings for several queries (the question in the user's words,
+    a sketch of the answer…): each query's best chunks come early, none can push the others out."""
+    rankings = [rank(q, items, k=len(items)) for q in queries if q.strip()] or [items]
+    seen, merged = set(), []
+    for row in zip(*rankings):
+        for item in row:
+            if item not in seen:
+                seen.add(item)
+                merged.append(item)
+    return merged + [i for i in items if i not in seen]
+
+
 # --- extractive answers: the model picks sentences, it doesn't write them --------
 
 SENT_SPLIT = re.compile(r"(?<=[.!?…])\s+(?=[A-ZА-ЯЁІЇЄҐ0-9«\"(])")
@@ -287,6 +300,15 @@ def drop_near_duplicates(quotes: list[tuple[str, str]], threshold: float = 0.6) 
             kept.append((src, words))
             res.append((src, s))
     return res
+
+
+# Pages rarely use the question's words: "years of Bismarck's life" is answered by "born … died …".
+# The model sketches what an answer usually looks like, and pages are ranked against that sketch.
+# The sketch is never shown — only verbatim quotes are — so a wrong guess can't reach the user.
+ANSWER_SHAPE_TASK = """Write one or two short sentences in English the way an encyclopedia or official
+documentation would answer the question, using the words such an answer typically contains (for dates:
+born, died, began, ended, released; for software: the setting, option or command names). If you don't
+know the facts, write placeholders instead of guessing. Output only the sentences."""
 
 
 TRANSLATE_TASK = """Translate each sentence into {lang}, faithfully and literally: do not add, remove

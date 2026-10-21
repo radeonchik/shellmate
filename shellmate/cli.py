@@ -6,6 +6,7 @@ so `shellmate install obs` and `friday install obs` are the same program with se
 import argparse
 import dataclasses
 import difflib
+import json
 import os
 import re
 import stat
@@ -17,7 +18,8 @@ from shellmate import (config, disk, docs, errors, i18n, llm, news, onboarding, 
                     state, system, ui, updates, web)
 from shellmate.i18n import t
 from shellmate.packages import Pkg
-from shellmate.prompts import CHAT_TASK, capabilities, defang, explain_task, lang_of
+from shellmate.prompts import (CHAT_TASK, TRANSLATE_AGAIN, TRANSLATE_SCHEMA, TRANSLATE_TASK, capabilities,
+                               defang, explain_task, lang_of, ui_language)
 from shellmate.skills_knowledge import KnowledgeSkills
 from shellmate.skills_system import SystemSkills
 
@@ -378,6 +380,33 @@ class App(SystemSkills, KnowledgeSkills):
                        title=t("Объяснение · без источников, может ошибаться", "Explanation · no sources, may be wrong"))
         return 0
 
+    def translate(self, it: router.Intent, query: str, text: str = "") -> int:
+        """Free-form, but harmless: no commands come out of it. The big model writes it when there is one.
+        The model names the target language first (JSON), then translates; a copy of the original
+        (9B did that for "переведи «спасибо»") is caught by code and redone with the target spelled out."""
+        source = text or it.text or query
+        default = "English" if lang_of(source) == ui_language() else ui_language()
+        model = self.model_for(risky=True)
+        same = lambda a, b: re.sub(r"\W+", "", a.lower()) == re.sub(r"\W+", "", b.lower())  # noqa: E731
+        with ui.working(thinking(model, self.cfg.model)):
+            raw = llm.chat(self.cfg.ollama_url, model,
+                           [{"role": "system", "content": TRANSLATE_TASK.format(target=default)},
+                            {"role": "user", "content": f"Request: {query}\nText:\n{source}"}], schema=TRANSLATE_SCHEMA)
+            try:
+                out = json.loads(raw)
+                target, result = out["target_language"], out["translation"].strip()
+            except (ValueError, KeyError, AttributeError):
+                target, result = default, ""
+            if not result or same(result, source):
+                if not result or target.lower()[:2] == lang_of(source).lower()[:2]:  # "Russian"/"ru" for Russian text
+                    target = default
+                result = llm.chat(self.cfg.ollama_url, model,
+                                  [{"role": "system", "content": TRANSLATE_AGAIN},
+                                   {"role": "user", "content": f"Translate into {target}:\n{source}"}]).strip()
+        result, _ = defang(result)
+        ui.panel(t("Перевод", "Translation"), ui.render_markdown(result).split("\n"), "accent", "✦")
+        return 0
+
     def theme(self, it: router.Intent, query: str) -> int:
         wanted = next((t for t in (it.text, query) if ui.resolve_theme(t)), "")
         spec = ui.theme_name(wanted) if wanted else pick_color(self.cfg.name, self.cfg.color)
@@ -528,7 +557,17 @@ class App(SystemSkills, KnowledgeSkills):
     def unknown(self, it: router.Intent, query: str) -> int:
         self.say(self.phrase("unknown"))
         ui.panel(t("Что я умею", "What I can do"), [f"• {line.strip()}" for line in self.capabilities().splitlines()], "accent", "◆")
+        # the router may misjudge a plain question as "can't do": the web is one confirmation away
+        if sys.stdin.isatty() and query and self.ask_yes(t("Поискать это в интернете?", "Search the web for it?")):
+            return 0 if self.from_web(query, query, loud=True) else 1
         return 1
+
+    @staticmethod
+    def ask_yes(question: str) -> bool:
+        try:
+            return input(f"  {question} {ui.dim('[y/N]')} ").strip().lower() in ("y", "yes", "д", "да")
+        except EOFError:
+            return False
 
 
 EXIT_WORDS = {"exit", "quit", "q", "выход", "пока", "bye", ":q"}
@@ -709,7 +748,9 @@ def main(argv: list[str] | None = None) -> int:
                      ["", ui.dim(t(f"в индексе {files} файлов, {chunks} фрагментов", f"{files} files, {chunks} chunks in the index"))],
                      "source", "§")
             return 0
-        if piped:  # `some-cmd 2>&1 | shellmate explain` — no routing needed
+        if piped:  # `some-cmd 2>&1 | shellmate explain`, `cat notes.txt | shellmate translate to English`
+            if query and router.classify(cfg.ollama_url, cfg.model, query).intent == "translate":
+                return app.translate(router.Intent("translate"), query, piped)
             return app.explain_text(piped, query)
         if not query:
             if sys.stdin.isatty():

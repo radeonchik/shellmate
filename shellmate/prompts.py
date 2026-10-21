@@ -30,6 +30,19 @@ def explain_task(lang: str) -> str:
 def log_task(lang: str) -> str:
     return LOG.format(lang=lang, **_system())
 
+TRANSLATE_TASK = """You are a professional translator. First decide the target language: the one the
+request names; if the request names none — {target}. Then translate the text into it naturally, the way a
+native speaker would say it, keeping meaning, tone, line breaks and formatting; names, code, commands and
+paths stay unchanged. The translation must be in the target language, never a copy of the original."""
+
+TRANSLATE_SCHEMA = {"type": "object",
+                    "properties": {"target_language": {"type": "string"}, "translation": {"type": "string"}},
+                    "required": ["target_language", "translation"]}
+
+# when the model copied the text instead: the target named outright
+TRANSLATE_AGAIN = """You are a professional translator. Output ONLY the translation, natural, as a native
+speaker would say it."""
+
 CHAT_TASK = """Reply to the user's message in 1-3 short sentences, in {lang}, in your communication style.
 If they ask what you can do, use ONLY this list and never claim other abilities:
 {capabilities}
@@ -46,7 +59,8 @@ CAPABILITIES_RU = """  установить, удалить и найти про
   сеть: есть ли интернет, IP, Wi-Fi, кто занял порт
   найти ответ в интернете
   отвечать по твоим документам (добавь папку: «{name} добавь ~/Documents в источники»)
-  объяснить ошибку (можно так: команда 2>&1 | {name} explain)"""
+  объяснить ошибку (можно так: команда 2>&1 | {name} explain)
+  перевести текст (можно и файл: cat файл | {name} переведи на английский)"""
 
 CAPABILITIES_EN = """  install, remove and find programs ({sources})
   update the system (with a btrfs snapshot if set up) and roll a package back to an older version
@@ -59,7 +73,8 @@ CAPABILITIES_EN = """  install, remove and find programs ({sources})
   network: is the internet up, IP, Wi-Fi, who holds a port
   find an answer on the web
   answer from your documents (add a folder: “{name} add ~/Documents to sources”)
-  explain an error (like this: command 2>&1 | {name} explain)"""
+  explain an error (like this: command 2>&1 | {name} explain)
+  translate a text (a file too: cat file | {name} translate to Russian)"""
 
 
 def capabilities() -> str:

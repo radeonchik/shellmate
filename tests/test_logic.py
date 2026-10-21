@@ -68,10 +68,48 @@ class Text(unittest.TestCase):
     def test_meta_phrases_removed(self):
         self.assertEqual(rag.core_question("как очистить кэш, найди в инете"), "как очистить кэш")
 
+    def test_wrap_carries_styles(self):
+        with mock.patch.object(ui, "_COLOR", True):
+            line = "¹ " + ui.dim(ui.italic("one two three four five six")) + " " + ui.bold("seven") + " eight nine"
+            parts = ui.wrap(line, 12)
+        self.assertTrue(all(p.lstrip().startswith("\x1b[2m\x1b[3m") for p in parts[1:3]), parts)
+        self.assertFalse(parts[-1].lstrip().startswith("\x1b["), parts)  # after the reset: plain again
+
     def test_wrap_keeps_indent(self):
         ui._COLOR = False
         lines = ui.wrap("  To remove all files from the cache use the clean switch twice", 30)
         self.assertTrue(all(line.startswith("  ") for line in lines), lines)
+
+
+class Ranking(unittest.TestCase):
+    def test_answer_shape_ranks_in_facts(self):
+        items = [("w", "Bismarck spent the rest of his life writing; sixteen years younger than the king."),
+                 ("w", "Otto von Bismarck was born on 1 April 1815 and died on 30 July 1898."),
+                 ("w", "Bismarck was a German statesman.")]
+        q = "годы жизни Бисмарка Bismarck years of life"
+        self.assertNotEqual(rag.rank(q, items, k=1)[0], items[1])  # the words of the question miss it
+        merged = rag.rank_many([q, "Bismarck was born in 1815 and died in 1898."], items)
+        self.assertIn(items[1], merged[:2])
+        self.assertEqual(sorted(merged), sorted(items))
+
+    def test_video_pages_skipped(self):
+        from shellmate import web
+        res = [web.Result("Bismarck — YouTube", "https://www.youtube.com/watch?v=x", "", "[11:46] he was sixteen years younger"),
+               web.Result("Bismarck — Wikipedia", "https://en.wikipedia.org/wiki/Bismarck", "", "Bismarck was born in 1815.")]
+        self.assertEqual({src for src, _ in web.gather("Bismarck born", res)}, {res[1].url})
+
+
+class Translate(unittest.TestCase):
+    def test_copy_is_redone_with_the_target_named(self):
+        from shellmate import cli, config
+        app = cli.App(config.Config(name="t"), dry_run=True)
+        app._big = ""
+        replies = iter(['{"target_language": "Russian", "translation": "спасибо"}', "Thank you."])
+        with mock.patch.object(cli.llm, "chat", side_effect=lambda *a, **k: next(replies)) as chat, \
+                mock.patch.object(cli.ui, "panel") as panel:
+            app.translate(router.Intent("translate", text="спасибо"), "переведи «спасибо»")
+        self.assertIn("Translate into English", chat.call_args_list[1].args[2][1]["content"])
+        self.assertEqual(panel.call_args.args[1], ["Thank you."])
 
 
 class Safety(unittest.TestCase):

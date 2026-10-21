@@ -13,6 +13,7 @@ shellmate что занимает много места на диске         
 shellmate инфа о системе                  shellmate кто занял порт 8080
 shellmate как включить hdr в hyprland     shellmate найди в интернете, когда выйдет ядро 7.3
 shellmate добавь ~/Documents в источники  shellmate что у меня в заметках про роутер
+shellmate переведи на английский «доброе утро»   cat notes.txt | shellmate переведи на русский
 sudo apt install foo 2>&1 | shellmate explain
 ```
 

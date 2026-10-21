@@ -4,6 +4,7 @@ Mixed into cli.App, so `self` has say/phrase/ask_model/cfg."""
 import json
 import re
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from shellmate import config, docs, evidence, llm, rag, trusted, ui, web
@@ -66,7 +67,7 @@ class KnowledgeSkills:
         for n, (s, original, text) in enumerate(zip(sents, texts, shown)):
             where = f"  {ui.dim('— ' + s.heading)}" if s.heading else ""
             if related is not None and n == related:
-                lines.append(ui.dim(t("ещё по теме:", "also on topic:")))
+                lines.append("  " + ui.dim(t("ещё по теме:", "also on topic:")))
             body = f"«{text}»" if related is None or n < related else ui.dim(f"«{text}»")
             lines.append(f"{ui.rgb(color, ui.sup(sources.index(s.src) + 1))} {body}{where}")
             if text != original:
@@ -124,11 +125,23 @@ class KnowledgeSkills:
             return 0
         return 0 if self.from_web(query, q, loud=True) else 1
 
-    def from_web(self, question: str, q: str, loud: bool = False) -> bool:
-        """Open web search. loud: report 'nothing found' to the user instead of failing silently."""
+    def _answer_shape(self, question: str) -> str:
+        """What an answer usually looks like — only for ranking page chunks (see rag.ANSWER_SHAPE_TASK)."""
         try:
-            with ui.working(t("ищу в интернете: ", "searching the web: ") + q[:80]):
-                results = web.search_many([rag.core_question(question), q], self.cfg.searx_url)
+            return llm.chat(self.cfg.ollama_url, self.cfg.model,
+                            [{"role": "system", "content": rag.ANSWER_SHAPE_TASK},
+                             {"role": "user", "content": question}], timeout=30)[:400]
+        except llm.LLMError:
+            return ""
+
+    def from_web(self, question: str, q: str, loud: bool = False, cache: bool = True) -> bool:
+        """Open web search. loud: report 'nothing found' to the user instead of failing silently."""
+        web.FROM_CACHE = False
+        try:
+            with ui.working(t("ищу в интернете: ", "searching the web: ") + q[:80]), ThreadPoolExecutor(1) as ex:
+                shape = ex.submit(self._answer_shape, question)  # the model writes while the search runs
+                results = web.search_many([rag.core_question(question), q], self.cfg.searx_url, cache=cache)
+                shape = shape.result()
         except web.WebError as e:
             if loud:
                 ui.problem(str(e), title=t("Поиск недоступен", "Search unavailable"))
@@ -138,9 +151,14 @@ class KnowledgeSkills:
                 self.say(ui.yellow(self.phrase("not_found", q=q)))
             return False
         with ui.working(t(f"читаю {min(4, len(results))} страницы…", f"reading {min(4, len(results))} pages…")):
-            items = web.gather(f"{question} {q}", results)
-        return self._answer(question, items, "excerpts of web pages found by a search engine just now",
-                            {r.url: r.title for r in results}, quiet_empty=not loud, hint=q)
+            items = web.gather(f"{question} {q}", results, shape=shape)
+        cached = web.FROM_CACHE
+        if self._answer(question, items, "excerpts of web pages found by a search engine just now",
+                        {r.url: r.title for r in results}, quiet_empty=not loud or cached, hint=q):
+            return True
+        # a cached result set may be a provider's bad moment (dictionary pages for a WW2 question):
+        # one live search before giving up
+        return self.from_web(question, q, loud, cache=False) if cached else False
 
     # --- local documents ----------------------------------------------------------
 

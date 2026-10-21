@@ -58,6 +58,7 @@ class Settings:
 
 SETTINGS = Settings()
 LAST_PROVIDER = ""  # who answered the last search (for --search-setup / debugging)
+FROM_CACHE = False  # the last search() answered from the one-day cache (a stale miss gets one live retry)
 
 
 def configure(order: list[str], tavily_key: str = "", brave_key: str = "", searx_url: str = "") -> None:
@@ -212,8 +213,10 @@ def search(query: str, searx_url: str = "", n: int = 6, domains: list[str] | Non
            cache: bool = True) -> list[Result]:
     """First provider in the chain that answers wins. `searx_url` is kept for callers that
     pass one explicitly; normally configure() sets it."""
+    global FROM_CACHE
     path = _cache_file(query, n, domains)
     if cache and path.exists() and time.time() - path.stat().st_mtime < CACHE_TTL:
+        FROM_CACHE = True
         return [Result(**r) for r in json.loads(path.read_text())]
     if searx_url and not SETTINGS.searx_url:
         SETTINGS.searx_url = searx_url
@@ -240,7 +243,7 @@ def search(query: str, searx_url: str = "", n: int = 6, domains: list[str] | Non
                         "). The most reliable fix is a Tavily key: <assistant name> --search-setup"))
 
 
-def search_many(queries: list[str], searx_url: str = "", n: int = 6) -> list[Result]:
+def search_many(queries: list[str], searx_url: str = "", n: int = 6, cache: bool = True) -> list[Result]:
     """Searches several phrasings (the user's own words + the model's rewrite) and interleaves
     the results, so one bad rewrite can't hijack the topic. With a metered API only the
     last phrasing (the model's precise rewrite) is used, to save credits."""
@@ -250,7 +253,7 @@ def search_many(queries: list[str], searx_url: str = "", n: int = 6) -> list[Res
     lists, error = [], None
     for q in phrasings:
         try:
-            lists.append(search(q, searx_url, n))
+            lists.append(search(q, searx_url, n, cache=cache))
         except WebError as e:
             error = e
     if not any(lists) and error:
@@ -282,13 +285,27 @@ def fetch_text(url: str, _hops: int = 2) -> str:
     return body if ctype.startswith("text/") else ""
 
 
-def gather(query: str, results: list[Result], pages: int = 4) -> list[tuple[str, str]]:
+# video pages: a transcript is speech without context ("[11:46] … sixteen years younger than")
+VIDEO = re.compile(r"(?:^|\.)(?:youtube\.com|youtu\.be|vimeo\.com|tiktok\.com|rutube\.ru|vk\.com/video)", re.I)
+
+
+def gather(query: str, results: list[Result], pages: int = 4, k: int = 8, per_page: int = 3,
+           shape: str = "") -> list[tuple[str, str]]:
     """Reads the top pages in parallel (unless the provider already gave their text) and
-    returns the most relevant chunks (source=url)."""
-    top = results[:pages]
+    returns the most relevant chunks (source=url), at most per_page from one page. With a
+    shape (a sketch of the answer, rag.ANSWER_SHAPE_TASK) chunks like it are ranked in too."""
+    readable = [r for r in results if not VIDEO.search(urllib.parse.urlsplit(r.url).netloc)] or results
+    top = readable[:pages]
     with ThreadPoolExecutor(max_workers=len(top) or 1) as ex:
         texts = list(ex.map(lambda r: r.text or fetch_text(r.url), top))
     items = [(r.url, c) for r, t in zip(top, texts) for c in rag.chunks(t)]
     # snippets are a fallback for pages that refused to load
-    items += [(r.url, f"{r.title}. {r.snippet}") for r in results if r.snippet]
-    return rag.rank(query, items, k=6)
+    items += [(r.url, f"{r.title}. {r.snippet}") for r in readable if r.snippet]
+    picked, per = [], {}
+    for src, chunk in rag.rank_many([query, shape], items):
+        if per.get(src, 0) < per_page:
+            per[src] = per.get(src, 0) + 1
+            picked.append((src, chunk))
+            if len(picked) == k:
+                break
+    return picked

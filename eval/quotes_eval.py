@@ -22,6 +22,7 @@ HYPR = "https://lwn.net/Articles/1030177/"
 PACMAN = "https://wiki.archlinux.org/title/Pacman"
 SNAPPER = "https://wiki.archlinux.org/title/Snapper"
 AW = "https://wiki.archlinux.org/index.php?action=render&title="  # article body with section headings
+WIKI = "https://en.wikipedia.org/wiki/"
 # (question, source, keywords that mark an on-topic sentence, should an answer exist)
 CASES = [
     ("что пишут про переход убунту на раст", ("url", UBUNTU, "Ubuntu Rust coreutils sudo-rs"),
@@ -47,6 +48,10 @@ CASES = [
      ["autologin", "user=", "session=", "relogin"], True, ["gdm", "lightdm", "lxdm"]),
     ("как вручную собрать пакет из aur", ("url", AW + "Arch_User_Repository", "build aur package manually"),
      ["makepkg", "git clone", "pkgbuild", "build"], True, ["apt", "dnf"]),
+    # facts whose answer doesn't use the question's words ("years of life" -> "born … died …")
+    ("годы жизни Бисмарка", ("url", WIKI + "Otto_von_Bismarck", "Bismarck years of life"), ["1815", "1898"], True),
+    ("даты начала и конца второй мировой войны", ("url", WIKI + "World_War_II", "start and end dates of World War II"),
+     ["1939", "1945"], True),
 ]
 
 
@@ -55,15 +60,22 @@ if not docs.stats("shellmate")[0]:  # no local document index on this machine
     CASES = [c for c in CASES if c[1][0] != "docs"]
 
 
-def load(source: tuple, query: str) -> list[tuple[str, str]]:
+def load(source: tuple, query: str, shape: str = "") -> list[tuple[str, str]]:
     kind, arg = source[:2]
-    if kind == "url":  # like web.gather: rank by the question + the router's English rewrite
-        return rag.rank(f"{query} {source[2]}", [(arg, c) for c in rag.chunks(web.fetch_text(arg))], k=6)
+    if kind == "url":  # like web.gather: rank by the question + the router's English rewrite (+ answer shape)
+        text = web.fetch_text(arg) or web.fetch_text(arg.replace("index.php?action=render&title=", "title/"))
+        return rag.rank_many([f"{query} {source[2]}", shape], [(arg, c) for c in rag.chunks(text)])[:8 if shape else 6]
     return docs.search("shellmate", arg)
 
 
-def load_all() -> dict[str, list[tuple[str, str]]]:
-    return {c[0]: load(c[1], c[0]) for c in CASES}
+def answer_shape(url: str, model: str, question: str) -> str:
+    return llm.chat(url, model, [{"role": "system", "content": rag.ANSWER_SHAPE_TASK},
+                                 {"role": "user", "content": question}])[:400]
+
+
+def load_all(url: str = "", shape_model: str = "") -> dict[str, list[tuple[str, str]]]:
+    return {c[0]: load(c[1], c[0], answer_shape(url, shape_model, c[0]) if shape_model and c[1][0] == "url" else "")
+            for c in CASES}
 
 
 def _old(url: str, model: str, items, q: str, hint: str) -> list[str]:
@@ -110,8 +122,9 @@ def main() -> None:
     ap.add_argument("--url", default="http://127.0.0.1:11434")
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--compare", action="store_true", help="also run the old pick-IDs approach")
+    ap.add_argument("--shape", metavar="MODEL", help="rank page chunks with this model's answer sketch, like the web search does")
     args = ap.parse_args()
-    sources = load_all()
+    sources = load_all(args.url, args.shape or "")
     print(f"{'модель':<20}{'способ':<8}{'есть/нет верно':>15}{'точность':>10}{'чужие':>7}{'сред.':>8}")
     for model in args.models:
         llm.chat(args.url, model, [{"role": "user", "content": "hi"}])  # warm-up / load
