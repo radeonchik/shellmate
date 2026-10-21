@@ -12,6 +12,8 @@ import threading
 import time
 import unicodedata
 
+from shellmate.i18n import t
+
 _COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
 _TRUECOLOR = os.environ.get("COLORTERM", "") in ("truecolor", "24bit")
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\]8;[^\x1b]*\x1b\\")
@@ -41,6 +43,15 @@ PRESETS = {  # name: (title, accent, accent2 = gradient end, quote)
     "mono": ("Монохром — серый", (215, 215, 225), (135, 135, 150), (200, 200, 210)),
 }
 # words people use for colors -> preset (prefix match, any language)
+PRESETS_EN = {"classic": "Classic — cyan → violet", "matrix": "Matrix — green", "sunset": "Sunset — orange → pink",
+              "ocean": "Ocean — blue", "sakura": "Sakura — pink → lilac", "ember": "Ember — red → yellow",
+              "gold": "Gold", "mono": "Mono — gray"}
+
+
+def preset_label(key: str) -> str:
+    return t(PRESETS[key][0], PRESETS_EN.get(key, key))
+
+
 COLOR_WORDS = {"голуб": "classic", "циан": "classic", "cyan": "classic", "classic": "classic", "класси": "classic",
                "jarvis": "classic",  # the theme's name before the project was renamed
                "зел": "matrix", "green": "matrix", "матриц": "matrix", "matrix": "matrix",
@@ -67,7 +78,7 @@ def _custom(colors: list[tuple[int, int, int]]) -> tuple:
     else:
         h, l, s = colorsys.rgb_to_hls(*(x / 255 for x in a))
         b = tuple(round(x * 255) for x in colorsys.hls_to_rgb((h + 40 / 360) % 1, l, s))
-    return ("свой цвет", a, b, tuple(round(x + (255 - x) * 0.45) for x in a))
+    return (t("свой цвет", "custom color"), a, b, tuple(round(x + (255 - x) * 0.45) for x in a))
 
 
 def resolve_theme(spec: str) -> tuple | None:
@@ -93,13 +104,13 @@ def theme_name(spec: str) -> str:
     hexes = HEX.findall(spec)
     if hexes:
         return ",".join(f"#{h}" for h in hexes[:2])
-    t = resolve_theme(spec)
-    return next((k for k, v in PRESETS.items() if v == t), "classic")
+    found = resolve_theme(spec)
+    return next((k for k, v in PRESETS.items() if v == found), "classic")
 
 
 def set_theme(spec: str) -> None:
-    t = resolve_theme(spec) or PRESETS["classic"]
-    THEME.update(accent=t[1], accent2=t[2], quote=t[3])
+    theme = resolve_theme(spec) or PRESETS["classic"]
+    THEME.update(accent=theme[1], accent2=theme[2], quote=theme[3])
 
 
 # --- colors -------------------------------------------------------------------------
@@ -141,8 +152,7 @@ def gradient(text: str, start: str = "accent", end: str = "accent2") -> str:
 
 def swatch(name: str, spec: str) -> str:
     """How the agent looks in a theme, without switching to it: badge + a lit scanner."""
-    t = resolve_theme(spec) or PRESETS["classic"]
-    _, a, b, _ = t
+    _, a, b, _ = resolve_theme(spec) or PRESETS["classic"]
     n = max(1, len(name) - 1)
     label = "".join(_c("1;" + _rgb_code(*_mix(a, b, i / n)), ch) for i, ch in enumerate(name))
     scan = "".join(_c(_rgb_code(*_mix(a, b, i / 9)), "━") for i in range(10))
@@ -224,7 +234,8 @@ def kv(title: str, rows: list[tuple[str, str]], color: str = "accent", icon: str
     panel(title, lines, color, icon)
 
 
-def problem(what: str, fix: str = "", title: str = "Что случилось") -> None:
+def problem(what: str, fix: str = "", title: str = "") -> None:
+    title = title or t("Что случилось", "What happened")
     lines = [what] + (["", f"{rgb('ok', '➜')} {fix}"] if fix else [])
     panel(title, lines, "err", "✖")
 
@@ -311,7 +322,7 @@ class Spinner:
             hue = _mix(THEME["accent"], THEME["accent2"], c / (self.CELLS - 1))
             cells.append(rgb(_mix(THEME["off"], hue, glow), "━"))
         elapsed = time.monotonic() - self._t0
-        timer = f" {dim(f'{elapsed:.0f}с')}" if elapsed >= 1 else ""
+        timer = f" {dim(f'{elapsed:.0f}' + t('с', 's'))}" if elapsed >= 1 else ""
         label = self.text if width(self.text) < cols() - self.CELLS - 10 else self.text[: cols() - self.CELLS - 12] + "…"
         return f"\r\x1b[K {''.join(cells)} {dim(label)}{timer}"
 
@@ -361,18 +372,20 @@ def choose(lines: list[str], prompt: str) -> int | None:
             ["fzf", "--height=~50%", "--reverse", "--no-sort", "--ansi", "--delimiter=\t",
              "--with-nth=2..", "--border=rounded", f"--border-label= {prompt.rstrip(' >')} ",
              "--border-label-pos=3", "--info=inline-right", "--pointer=▶", "--prompt=❯ ",
-             "--header=Enter — выбрать · Esc — выйти", f"--color={colors}"],
+             "--header=" + t("Enter — выбрать · Esc — выйти", "Enter — choose · Esc — leave"), f"--color={colors}"],
             input=data, stdout=subprocess.PIPE, text=True)
         out = r.stdout.strip()
         return int(out.split("\t", 1)[0]) if r.returncode == 0 and out else None
     panel(prompt.rstrip(" >"), [f"{dim(str(i).rjust(2))}  {line}" for i, line in enumerate(lines, 1)])
-    ans = input(f"  номер (Enter — отмена): ").strip()
+    ans = input(t("  номер (Enter — отмена): ", "  number (Enter — cancel): ")).strip()
     return int(ans) - 1 if ans.isdigit() and 1 <= int(ans) <= len(lines) else None
 
 
-def confirm(cmd: list[str], question: str = "Выполнить?") -> bool:
+def confirm(cmd: list[str], question: str = "") -> bool:
+    question = question or t("Выполнить?", "Run it?")
     color = "warn" if cmd[:1] == ["sudo"] else "accent"  # root commands stand out
-    print(rgb(color, "╭─ ") + bold(rgb(color, "команда")) + (dim("  (с правами root)") if color == "warn" else ""))
+    print(rgb(color, "╭─ ") + bold(rgb(color, t("команда", "command"))) +
+          (dim(t("  (с правами root)", "  (as root)")) if color == "warn" else ""))
     for part in wrap(f"{dim('$')} {bold(shlex.join(cmd))}", max(20, cols() - 3)):
         print(f"{rgb(color, '│')} {part}")
     try:

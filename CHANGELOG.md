@@ -2,8 +2,17 @@
 
 ## Unreleased
 
+- English interface (and Russian, as before): chosen by the desktop locale, in the setup's first step
+  or with `--lang en|ru`; every message is written as `t("по-русски", "in English")` in `i18n.py`.
+  The error dictionary, communication styles, `--help`, `get.sh` and the README (`README.md` in
+  English, `README.ru.md` in Russian) are translated too. Requests are understood in both languages.
+- Fixed: the config saved fractional numbers (`escalate_intent = 0.5`) as strings, which broke the
+  first request after the setup when the cascade was on. Such configs now load correctly.
 - `get.sh`: install in one command (`curl -fsSL …/get.sh | sh`) — uv and shellmate without sudo,
   git/fzf/Ollama only after asking, then the onboarding. Checked in CI under dash.
+- Older AMD cards (Polaris, Vega — e.g. Radeon Pro 555X/560X, RX 470–590) get Ollama's Vulkan build
+  instead of ROCm, which doesn't support them (and is a 3 GB download on Arch).
+- The second (9B) model is only offered when it fits in video memory.
 
 ## 0.2.0
 

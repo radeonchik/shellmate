@@ -7,6 +7,7 @@ import urllib.parse
 from pathlib import Path
 
 from shellmate import config, docs, evidence, llm, rag, trusted, ui, web
+from shellmate.i18n import t
 from shellmate.prompts import lang_of
 
 
@@ -26,28 +27,30 @@ class KnowledgeSkills:
         Returns whether an answer was found; quiet_empty lets the caller fall back silently."""
         question = rag.core_question(query)
         model = self.model_for()
-        with ui.working("проверяю, что из найденного действительно отвечает на вопрос…"):
+        with ui.working(t("проверяю, что из найденного действительно отвечает на вопрос…", "checking what in the results really answers the question…")):
             ev = evidence.pick(items, question, hint, self.cfg.ollama_url, model)
         # second opinion when the fast model hesitated over what counts as an answer. ("Found nothing"
         # is NOT a trigger: measured, the big model then also finds nothing — it only added latency.)
         if ev.answers and ev.confidence < self.cfg.escalate_quotes and self.big and model != self.big:
-            with ui.working(f"не уверена в цитатах ({ev.confidence:.0%}) — перепроверяю ({self.big})…"):
+            with ui.working(t(f"не уверена в цитатах ({ev.confidence:.0%}) — перепроверяю ({self.big})…",
+                               f"unsure about the quotes ({ev.confidence:.0%}) — double-checking ({self.big})…")):
                 ev = evidence.pick(items, question, hint, self.cfg.ollama_url, self.big)
         if not ev.answers:
             if not quiet_empty:
                 self.say(ui.yellow(self.phrase("no_evidence")))
                 if ev.related:
-                    self._show(ev.related, query, titles, "Может пригодиться — по теме, но не прямой ответ",
+                    self._show(ev.related, query, titles, t("Может пригодиться — по теме, но не прямой ответ", "May help — on topic, but not a direct answer"),
                                "source")
             return False
         if self.cfg.answer_mode == "summary":
             quotes = "\n".join(f"- {s.text.split(chr(10))[0]}" for s in ev.answers)
-            self.ask_model(rag.SUMMARY_TASK.format(lang=lang_of(query), quotes=quotes), query, title="Кратко")
+            self.ask_model(rag.SUMMARY_TASK.format(lang=lang_of(query), quotes=quotes), query, title=t("Кратко", "In short"))
         else:
             self.say(self.phrase("quotes"))
         official = all(trusted.is_trusted(s.src, self.trusted_domains) for s in ev.answers)
         self._show(ev.answers + ev.related, query, titles,
-                   "Из официальной документации" if official else "Цитаты", "quote", related=len(ev.answers))
+                   t("Из официальной документации", "From the official documentation") if official else t("Цитаты", "Quotes"),
+                   "quote", related=len(ev.answers))
         return True
 
     def _show(self, sents: list, query: str, titles: dict[str, str] | None, title: str, color: str,
@@ -56,14 +59,14 @@ class KnowledgeSkills:
         sources = list(dict.fromkeys(s.src for s in sents))
         texts = [s.text.split("\n", 1)[0] for s in sents]  # prose is translated, commands are not
         shown = texts
-        if any(_cyrillic(t) != _cyrillic(query) for t in texts):
-            with ui.working("перевожу цитаты…"):
+        if any(_cyrillic(x) != _cyrillic(query) for x in texts):
+            with ui.working(t("перевожу цитаты…", "translating the quotes…")):
                 shown = self._translate(texts, lang_of(query)) or texts
         lines = []
         for n, (s, original, text) in enumerate(zip(sents, texts, shown)):
             where = f"  {ui.dim('— ' + s.heading)}" if s.heading else ""
             if related is not None and n == related:
-                lines.append(ui.dim("ещё по теме:"))
+                lines.append(ui.dim(t("ещё по теме:", "also on topic:")))
             body = f"«{text}»" if related is None or n < related else ui.dim(f"«{text}»")
             lines.append(f"{ui.rgb(color, ui.sup(sources.index(s.src) + 1))} {body}{where}")
             if text != original:
@@ -74,7 +77,7 @@ class KnowledgeSkills:
                 else:  # file contents / config: shown as a code block, not as something to run
                     lines.append(f"  {ui.rgb('accent', '▏')} {ui.bold(c)}")
         ui.panel(title, lines, color, "❝")
-        ui.panel("Источники", [self._source_line(i, src, (titles or {}).get(src, ""),
+        ui.panel(t("Источники", "Sources"), [self._source_line(i, src, (titles or {}).get(src, ""),
                                                  trusted.is_trusted(src, self.trusted_domains))
                                for i, src in enumerate(sources, 1)], "source", "§")
 
@@ -83,7 +86,7 @@ class KnowledgeSkills:
         if src.startswith(("http://", "https://")):
             url = urllib.parse.urlsplit(src)
             where = url.netloc.removeprefix("www.") + (url.path if len(url.path) < 40 else url.path[:39] + "…")
-            star = ui.rgb("accent2", " ★ официальная вики") if official else ""
+            star = ui.rgb("accent2", t(" ★ официальная вики", " ★ official wiki")) if official else ""
             return (f"{ui.rgb('quote', ui.sup(i))} {ui.bold(title or url.netloc)}{star}  "
                     f"{ui.dim(ui.link(where, src))}")
         path = Path(src)
@@ -99,20 +102,20 @@ class KnowledgeSkills:
             out = json.loads(raw)["t"]
         except (json.JSONDecodeError, KeyError, TypeError):
             return None
-        if len(out) != len(texts) or not all(isinstance(t, str) and t for t in out):
+        if len(out) != len(texts) or not all(isinstance(x, str) and x for x in out):
             return None
         # small models sometimes "translate" by copying: then show originals only, not twice
         want_cyr = lang in ("Russian", "Ukrainian")
-        return [t if _cyrillic(t) == want_cyr else o for t, o in zip(out, texts)]
+        return [x if _cyrillic(x) == want_cyr else o for x, o in zip(out, texts)]
 
     def from_trusted(self, question: str, query_en: str) -> bool:
         """Favored wikis first. True if they answered (quotes already printed)."""
-        with ui.working("ищу в официальных вики…"):
+        with ui.working(t("ищу в официальных вики…", "searching the official wikis…")):
             items, titles = trusted.gather(question, query_en, self.trusted_domains, self.cfg.searx_url)
         if items and self._answer(question, items, "excerpts of OFFICIAL documentation wikis", titles, quiet_empty=True,
                                   hint=query_en):
             return True
-        self.say(ui.dim("в официальных вики прямого ответа нет"))
+        self.say(ui.dim(t("в официальных вики прямого ответа нет", "no direct answer in the official wikis")))
         return False
 
     def web(self, it, query: str) -> int:
@@ -124,17 +127,17 @@ class KnowledgeSkills:
     def from_web(self, question: str, q: str, loud: bool = False) -> bool:
         """Open web search. loud: report 'nothing found' to the user instead of failing silently."""
         try:
-            with ui.working(f"ищу в интернете: {q[:80]}"):
+            with ui.working(t("ищу в интернете: ", "searching the web: ") + q[:80]):
                 results = web.search_many([rag.core_question(question), q], self.cfg.searx_url)
         except web.WebError as e:
             if loud:
-                ui.problem(str(e), title="Поиск недоступен")
+                ui.problem(str(e), title=t("Поиск недоступен", "Search unavailable"))
             return False
         if not results:
             if loud:
                 self.say(ui.yellow(self.phrase("not_found", q=q)))
             return False
-        with ui.working(f"читаю {min(4, len(results))} страницы…"):
+        with ui.working(t(f"читаю {min(4, len(results))} страницы…", f"reading {min(4, len(results))} pages…")):
             items = web.gather(f"{question} {q}", results)
         return self._answer(question, items, "excerpts of web pages found by a search engine just now",
                             {r.url: r.title for r in results}, quiet_empty=not loud, hint=q)
@@ -142,14 +145,15 @@ class KnowledgeSkills:
     # --- local documents ----------------------------------------------------------
 
     def _reindex(self) -> None:
-        with ui.working("проверяю документы…") as sp:
+        with ui.working(t("проверяю документы…", "checking the documents…")) as sp:
             n, total, empty = docs.reindex(
                 self.cfg.name, self.cfg.docs,
-                lambda i, t, p: sp.update(f"индексирую {i}/{t}: {p.name}"))
+                lambda i, of, p: sp.update(t("индексирую ", "indexing ") + f"{i}/{of}: {p.name}"))
         if n:
-            self.say(ui.dim(f"обновил индекс: {n} файл(ов), всего {total}"))
+            self.say(ui.dim(t(f"обновил индекс: {n} файл(ов), всего {total}", f"index updated: {n} file(s), {total} in total")))
         if empty:
-            ui.panel(f"{len(empty)} PDF без текстового слоя — это сканы, прочитать их я пока не могу",
+            ui.panel(t(f"{len(empty)} PDF без текстового слоя — это сканы, прочитать их я пока не могу",
+                       f"{len(empty)} PDFs without a text layer — they are scans, I can't read them yet"),
                      [ui.dim(docs.short(p)) for p in empty[:5]], "warn", "!")
 
     def docs(self, it, query: str) -> int:
@@ -158,11 +162,11 @@ class KnowledgeSkills:
         if it.action == "remove":
             return self.docs_remove(it.text)
         if not self.cfg.docs:
-            self.say(f"источников пока нет. Добавь папку, например: "
-                     f"{ui.bold(self.cfg.name + ' добавь ~/Documents в источники')}")
+            self.say(t("источников пока нет. Добавь папку, например: ", "no sources yet. Add a folder, for example: ") +
+                     ui.bold(self.cfg.name + t(" добавь ~/Documents в источники", " add ~/Documents to sources")))
             return 1
         self._reindex()
-        with ui.working("ищу в документах…"):
+        with ui.working(t("ищу в документах…", "searching the documents…")):
             hits = docs.search(self.cfg.name, it.text or query)
         if not hits:
             self.say(ui.yellow(self.phrase("not_found", q=it.text or query)))
@@ -174,20 +178,21 @@ class KnowledgeSkills:
     def docs_add(self, folder: str) -> int:
         path = Path(folder or ".").expanduser().resolve()
         if not path.is_dir():
-            ui.problem(f"папки {folder} нет")
+            ui.problem(t(f"папки {folder} нет", f"there's no folder {folder}"))
             return 1
         if str(path) not in self.cfg.docs:
             self.cfg.docs.append(str(path))
             config.save(self.cfg)
         self._reindex()
         files, chunks = docs.stats(self.cfg.name)
-        self.say(ui.green(f"{docs.short(str(path))} добавлена. В индексе {files} файлов ({chunks} фрагментов)."))
+        self.say(ui.green(t(f"{docs.short(str(path))} добавлена. В индексе {files} файлов ({chunks} фрагментов).",
+                            f"{docs.short(str(path))} added. {files} files in the index ({chunks} chunks).")))
         return 0
 
     def docs_remove(self, folder: str) -> int:
         path = str(Path(folder).expanduser().resolve()) if folder else ""
         if path not in self.cfg.docs:
-            ui.panel("Папки-источники", [docs.short(d) for d in self.cfg.docs] or [ui.dim("нет")], "source", "§")
+            ui.panel(t("Папки-источники", "Source folders"), [docs.short(d) for d in self.cfg.docs] or [ui.dim(t("нет", "none"))], "source", "§")
             return 1
         self.cfg.docs.remove(path)
         config.save(self.cfg)

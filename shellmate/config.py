@@ -8,7 +8,7 @@ try:
     import tomllib
 except ModuleNotFoundError:  # Python 3.10 (Ubuntu 22.04): our config is flat, a tiny reader is enough
     tomllib = None
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 
@@ -24,9 +24,10 @@ class Config:
     ollama_url: str = "http://127.0.0.1:11434"
     use_flatpak: bool = True
     max_results: int = 15
+    lang: str = ""  # interface language "ru" | "en"; empty = the desktop's locale
     style: str = ""  # "friendly" | "butler" | "brief" | "custom"; empty = first run
     style_custom: str = ""  # user's own description when style == "custom"
-    address: str = ""  # how to address the user, e.g. a name or "босс"
+    address: str = ""  # how to address the user, e.g. a name or "boss"
     color: str = "classic"  # ui.PRESETS name or "#rrggbb" / "#rrggbb,#rrggbb"
     docs: list[str] = field(default_factory=list)  # folders used as a local knowledge source
     searx_url: str = ""  # your SearXNG instance (tools/setup-searxng.sh)
@@ -76,15 +77,27 @@ def load(name: str) -> Config:
                 data = tomllib.load(f)
         else:
             data = _read_flat_toml(path.read_text())
-    allowed = {f.name for f in fields(Config)} - {"name"}
-    return Config(name=name, **{k: v for k, v in data.items() if k in allowed})
+    defaults = Config(name=name)
+    values = {}
+    for k, v in data.items():
+        if k == "name" or not hasattr(defaults, k):
+            continue
+        want = type(getattr(defaults, k))
+        if want is float and isinstance(v, (int, str)):  # versions before 0.2.1 saved floats as strings
+            try:
+                v = float(v)
+            except ValueError:
+                continue
+        if isinstance(v, want):
+            values[k] = v
+    return Config(name=name, **values)
 
 
 def _toml_value(v) -> str:
     if isinstance(v, bool):
         return "true" if v else "false"
-    if isinstance(v, int):
-        return str(v)
+    if isinstance(v, (int, float)):
+        return repr(v)
     if isinstance(v, list):
         return json.dumps([str(x) for x in v], ensure_ascii=False)
     return json.dumps(str(v), ensure_ascii=False)  # JSON strings are valid TOML basic strings

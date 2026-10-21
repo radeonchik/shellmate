@@ -6,7 +6,8 @@ from datetime import datetime
 from functools import cmp_to_key
 from pathlib import Path
 
-from shellmate.backends.base import Backend, Cleanup, Pkg, du, run_quiet
+from shellmate.backends.base import VULKAN_ON, Backend, Cleanup, Pkg, du, info_labels, run_quiet
+from shellmate.i18n import t
 
 HEADER = re.compile(r"^(\S+)/(\S+) (\S+)(.*)$")
 PKG_CACHE = Path("/var/cache/pacman/pkg")
@@ -48,7 +49,7 @@ class Pacman(Backend):
 
     @property
     def sources_label(self) -> str:
-        return "репозитории, AUR" if self.helper else "репозитории"
+        return t("репозитории, AUR", "repositories, AUR") if self.helper else t("репозитории", "repositories")
 
     def search(self, term: str) -> list[Pkg]:
         return parse_pacman(run_quiet([self.helper or "pacman", "-Ss", term]))
@@ -64,7 +65,8 @@ class Pacman(Backend):
         return set(run_quiet(["pacman", "-Qq"]).split())
 
     def hold_hint(self, names: list[str]) -> str:
-        return f"добавь в /etc/pacman.conf строку: IgnorePkg = {' '.join(names)}  (и убери, когда исправят)"
+        return t(f"добавь в /etc/pacman.conf строку: IgnorePkg = {' '.join(names)}  (и убери, когда исправят)",
+                 f"add to /etc/pacman.conf the line: IgnorePkg = {' '.join(names)}  (and remove it once fixed)")
 
     def owner(self, path: str) -> tuple[str, str] | None:
         m = re.search(r"is owned by (\S+) (\S+)", run_quiet(["pacman", "-Qo", path]))
@@ -72,13 +74,16 @@ class Pacman(Backend):
 
     def info(self, name: str) -> list[tuple[str, str]]:
         info = dict(re.findall(r"^([A-Za-z ]+?)\s*: (.*)$", run_quiet(["pacman", "-Qi", name]), re.M))
-        labels = [("Description", "Описание"), ("Version", "Версия"), ("Installed Size", "Размер"),
-                  ("Install Reason", "Установлен"), ("Install Date", "Дата"), ("Required By", "Нужен для")]
-        reasons = {"Explicitly installed": "вручную",
-                   "Installed as a dependency for another package": "как зависимость"}
-        return [(ru, reasons.get(info[en], info[en])) for en, ru in labels if info.get(en)]
+        lb = info_labels()
+        labels = [("Description", lb["desc"]), ("Version", lb["version"]), ("Installed Size", lb["size"]),
+                  ("Install Reason", lb["reason"]), ("Install Date", lb["date"]), ("Required By", lb["needed"])]
+        reasons = {"Explicitly installed": lb["manual"], "Installed as a dependency for another package": lb["dep"]}
+        return [(label, reasons.get(info[key], info[key])) for key, label in labels if info.get(key)]
 
-    provides_hint = "нужна база файлов pacman"
+    @property
+    def provides_hint(self) -> str:
+        return t("нужна база файлов pacman", "the pacman file database is needed")
+
     provides_setup = ["sudo", "pacman", "-Fy"]
 
     def provides(self, command: str) -> list[Pkg] | None:
@@ -114,11 +119,12 @@ class Pacman(Backend):
                 m = re.search(r"disk space saved: ([\d.]+) (\w+)", run_quiet(["paccache", f"-d{args}"]))
                 units = {"B": 1, "KiB": 1024, "MiB": 1024**2, "GiB": 1024**3, "TiB": 1024**4}
                 return int(float(m.group(1)) * units.get(m.group(2), 1)) if m else 0
-            res.append(Cleanup("старые версии пакетов в кэше pacman (оставлю по одной)", saved("k1"),
+            res.append(Cleanup(t("старые версии пакетов в кэше pacman (оставлю по одной)",
+                                 "old package versions in the pacman cache (keeping one each)"), saved("k1"),
                                ["sudo", "paccache", "-rk1"]))
-            res.append(Cleanup("кэш уже удалённых пакетов", saved("uk0"), ["sudo", "paccache", "-ruk0"]))
+            res.append(Cleanup(t("кэш уже удалённых пакетов", "cache of removed packages"), saved("uk0"), ["sudo", "paccache", "-ruk0"]))
         if self.helper:
-            res.append(Cleanup(f"кэш сборок AUR ({self.helper})", du(Path.home() / ".cache" / self.helper),
+            res.append(Cleanup(t("кэш сборок AUR", "AUR build cache") + f" ({self.helper})", du(Path.home() / ".cache" / self.helper),
                                [self.helper, "-Sc"]))
         orphans = run_quiet(["pacman", "-Qdtq"]).split()
         if orphans:
@@ -126,8 +132,10 @@ class Pacman(Backend):
             units = {"B": 1, "KiB": 1024, "MiB": 1024**2, "GiB": 1024**3}
             size = sum(int(float(n) * units.get(u, 1))
                        for n, u in re.findall(r"Installed Size\s*:\s*([\d.]+) (\w+)", info))
-            res.append(Cleanup(f"пакеты-сироты: {len(orphans)} шт. — зависимости, которые больше никому "
-                               f"не нужны; проверь список перед «y»", size,
+            res.append(Cleanup(t(f"пакеты-сироты: {len(orphans)} шт. — зависимости, которые больше никому "
+                                 f"не нужны; проверь список перед «y»",
+                                 f"orphan packages: {len(orphans)} — dependencies nothing needs any more; "
+                                 f"check the list before “y”"), size,
                                ["sudo", "pacman", "-Rns", *orphans], keep=True))
         return res
 
@@ -150,15 +158,16 @@ class Pacman(Backend):
         return feeds
 
     def auto_snapshot(self) -> str | None:
-        return "snap-pac сам сделает снимок системы до и после обновления" if self.installed_version("snap-pac") else None
+        return t("snap-pac сам сделает снимок системы до и после обновления",
+                 "snap-pac will take a system snapshot before and after the update") if self.installed_version("snap-pac") else None
 
     def ollama_install(self, gpu: str) -> str:
-        pkg = {"cuda": "ollama-cuda", "rocm": "ollama-rocm"}.get(gpu, "ollama")
-        return f"sudo pacman -S {pkg} && sudo systemctl enable --now ollama"
+        pkg = {"cuda": "ollama-cuda", "rocm": "ollama-rocm", "vulkan": "ollama-vulkan"}.get(gpu, "ollama")
+        return f"sudo pacman -S {pkg} && sudo systemctl enable --now ollama" + (f" && {VULKAN_ON}" if gpu == "vulkan" else "")
 
     def install_cmd(self, pkgs: list[Pkg]) -> list[str]:
         if not self.helper and any(p.source == "aur" for p in pkgs):
-            raise RuntimeError("для пакетов из AUR нужен paru или yay")
+            raise RuntimeError(t("для пакетов из AUR нужен paru или yay", "AUR packages need paru or yay"))
         # repo/name pins the exact source the user picked (same name can exist in repo and AUR)
         targets = [f"{p.source}/{p.name}" if p.source not in ("", "local", "repo") else p.name for p in pkgs]
         return [self.helper, "-S", *targets] if self.helper else ["sudo", "pacman", "-S", *targets]

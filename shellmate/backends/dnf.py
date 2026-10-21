@@ -7,7 +7,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from shellmate.backends.base import Backend, Cleanup, Pkg, du, run_quiet
+from shellmate.backends.base import Backend, Cleanup, Pkg, du, info_labels, run_quiet
+from shellmate.i18n import t
 
 QF = "%{name}\t%{evr}\t%{summary}\n"
 ARCHES = r"(?:x86_64|noarch|i686|aarch64|ppc64le|s390x|src)"
@@ -61,7 +62,7 @@ class Dnf(Backend):
 
     @property
     def sources_label(self) -> str:
-        return "репозитории dnf"
+        return t("репозитории dnf", "dnf repositories")
 
     def installed_names(self) -> set[str]:
         return set(run_quiet(["rpm", "-qa", "--qf", "%{NAME}\n"]).split())
@@ -83,7 +84,8 @@ class Dnf(Backend):
         return out.splitlines()[0] if out and "not installed" not in out else None
 
     def hold_hint(self, names: list[str]) -> str:
-        return f"закрепи версию: sudo dnf versionlock add {' '.join(names)}  (нужен плагин versionlock)"
+        return t(f"закрепи версию: sudo dnf versionlock add {' '.join(names)}  (нужен плагин versionlock)",
+                 f"pin the version: sudo dnf versionlock add {' '.join(names)}  (needs the versionlock plugin)")
 
     def owner(self, path: str) -> tuple[str, str] | None:
         out = run_quiet(["rpm", "-qf", "--qf", "%{NAME}\t%{VERSION}-%{RELEASE}\n", path]).strip()
@@ -97,13 +99,14 @@ class Dnf(Backend):
         lines = out.splitlines()
         if len(lines) < 4 or "not installed" in out:
             return []
-        rows = [("Описание", lines[0]), ("Версия", lines[1]),
-                ("Размер", f"{int(lines[2]) / 1024**2:.1f} MiB" if lines[2].isdigit() else lines[2]),
-                ("Дата", lines[3])]
+        lb = info_labels()
+        rows = [(lb["desc"], lines[0]), (lb["version"], lines[1]),
+                (lb["size"], f"{int(lines[2]) / 1024**2:.1f} MiB" if lines[2].isdigit() else lines[2]),
+                (lb["date"], lines[3])]
         req = [line for line in run_quiet(["rpm", "-q", "--whatrequires", name]).splitlines()
                if line and "no package requires" not in line]
         if req:
-            rows.append(("Нужен для", "  ".join(dict.fromkeys(NEVRA.match(r).group(1) if NEVRA.match(r) else r
+            rows.append((lb["needed"], "  ".join(dict.fromkeys(NEVRA.match(r).group(1) if NEVRA.match(r) else r
                                                               for r in req))))
         return rows
 
@@ -128,10 +131,11 @@ class Dnf(Backend):
         res = []
         size = sum(du(p) for p in (Path("/var/cache/dnf"), Path("/var/cache/libdnf5")) if p.is_dir())
         if size:
-            res.append(Cleanup("скачанные пакеты в кэше dnf", size, ["sudo", "dnf", "clean", "packages"]))
+            res.append(Cleanup(t("скачанные пакеты в кэше dnf", "downloaded packages in the dnf cache"), size, ["sudo", "dnf", "clean", "packages"]))
         unneeded = run_quiet(["dnf", "repoquery", "--unneeded", "-q"], timeout=120).split()
         if unneeded:
-            res.append(Cleanup(f"ненужные зависимости: {len(unneeded)} шт. — проверь список перед «y»", None,
+            res.append(Cleanup(t(f"ненужные зависимости: {len(unneeded)} шт. — проверь список перед «y»",
+                                 f"unneeded dependencies: {len(unneeded)} — check the list before “y”"), None,
                                ["sudo", "dnf", "autoremove"], keep=True))
         return res
 
@@ -141,7 +145,8 @@ class Dnf(Backend):
     def auto_snapshot(self) -> str | None:
         for pkg in ("python3-dnf-plugin-snapper", "libdnf5-plugin-actions-snapper"):
             if self.installed_version(pkg):
-                return "плагин snapper для dnf сам сделает снимок системы до и после обновления"
+                return t("плагин snapper для dnf сам сделает снимок системы до и после обновления",
+                         "the dnf snapper plugin will take a system snapshot before and after the update")
         return None
 
     def install_cmd(self, pkgs: list[Pkg]) -> list[str]:

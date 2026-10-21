@@ -7,6 +7,7 @@ from difflib import SequenceMatcher
 from dataclasses import dataclass, field
 
 from shellmate import llm
+from shellmate.i18n import t
 
 INTENTS = ["install", "remove", "search", "update", "downgrade", "disk", "bigfiles", "health",
            "service", "processes", "pkginfo", "sysinfo", "network", "web", "docs", "explain",
@@ -246,17 +247,17 @@ def doubts(it: Intent, query: str, min_intent: float, min_packages: float) -> li
     from shellmate.packages import spelled_words  # local: packages imports nothing from here
     reasons = []
     if it.intent_p < min_intent:
-        reasons.append(f"колеблется в действии ({it.intent_p:.0%})")
+        reasons.append(t(f"колеблется в действии ({it.intent_p:.0%})", f"hesitates about the action ({it.intent_p:.0%})"))
     if it.packages and it.packages_p < min_packages:
-        reasons.append(f"не уверена в имени пакета ({it.packages_p:.0%})")
+        reasons.append(t(f"не уверена в имени пакета ({it.packages_p:.0%})", f"unsure of the package name ({it.packages_p:.0%})"))
     if it.intent == "unknown":
-        reasons.append("не поняла запрос")
+        reasons.append(t("не поняла запрос", "didn't understand the request"))
     if it.packages and it.intent not in ("install", "remove", "search", "downgrade", "pkginfo"):
-        reasons.append("назвала пакет, но действие не про пакеты")
+        reasons.append(t("назвала пакет, но действие не про пакеты", "named a package, but the action isn't about packages"))
     if it.intent == "install" and REMOVE_WORDS.search(query) and not INSTALL_WORDS.search(query):
-        reasons.append("в запросе «удалить», а модель решила «установить»")
+        reasons.append(t("в запросе «удалить», а модель решила «установить»", "the request says “remove”, the model chose “install”"))
     if it.intent == "remove" and INSTALL_WORDS.search(query) and not REMOVE_WORDS.search(query):
-        reasons.append("в запросе «установить», а модель решила «удалить»")
+        reasons.append(t("в запросе «установить», а модель решила «удалить»", "the request says “install”, the model chose “remove”"))
     # in a follow-up ("удали его") the name comes from the conversation, not from the typed words
     if it.packages and it.intent in ("install", "remove", "downgrade") and not is_follow_up(query):
         # a package nobody typed: "обсидиан" -> obs-studio. Typed words are transliterated and
@@ -267,5 +268,5 @@ def doubts(it: Intent, query: str, min_intent: float, min_packages: float) -> li
         def alike(w: str, p: str) -> bool:  # "diskord" ~ discord, "telegu" ~ telegram-desktop
             return SequenceMatcher(None, w, p[: len(w) + 2]).ratio() >= 0.6 or w in p
         if typed and not any(alike(w, p) for p in it.packages for w in typed):
-            reasons.append("имя пакета не похоже на написанное")
+            reasons.append(t("имя пакета не похоже на написанное", "the package name doesn't look like what was typed"))
     return reasons

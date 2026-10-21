@@ -8,6 +8,21 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from shellmate.i18n import t
+
+# Ollama's Vulkan backend (older AMD cards) is switched on per service
+VULKAN_ON = ("sudo mkdir -p /etc/systemd/system/ollama.service.d && "
+             "printf '[Service]\\nEnvironment=OLLAMA_VULKAN=1\\n' | "
+             "sudo tee /etc/systemd/system/ollama.service.d/vulkan.conf >/dev/null && "
+             "sudo systemctl daemon-reload && sudo systemctl restart ollama")
+
+def info_labels() -> dict[str, str]:
+    """Row names of Backend.info(), shared by all backends."""
+    return {"desc": t("Описание", "Description"), "version": t("Версия", "Version"), "size": t("Размер", "Size"),
+            "reason": t("Установлен", "Installed"), "date": t("Дата", "Date"), "needed": t("Нужен для", "Required by"),
+            "manual": t("вручную", "explicitly"), "dep": t("как зависимость", "as a dependency")}
+
+
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
@@ -77,7 +92,10 @@ class Backend:
     """Native package manager of a distribution family."""
     family = "unknown"
     tool = ""  # "pacman", "apt", "dnf"
-    sources_label = "репозитории"  # for the capabilities list: "репозитории, AUR"
+    @property
+    def sources_label(self) -> str:  # for the capabilities list: "repositories, AUR"
+        return t("репозитории", "repositories")
+
     tools_hint = ""  # for prompts: "pacman / paru / systemctl"
     other_tools = ""  # for prompts: tools of OTHER distros the model must not suggest
     context_words = ""  # what a question is about unless it names another distro (evidence.py)
@@ -142,7 +160,7 @@ class Backend:
         return None
 
     def ollama_install(self, gpu: str) -> str:
-        return "curl -fsSL https://ollama.com/install.sh | sh"
+        return "curl -fsSL https://ollama.com/install.sh | sh" + (" && " + VULKAN_ON if gpu == "vulkan" else "")
 
     # --- commands ------------------------------------------------------------------
     def install_cmd(self, pkgs: list[Pkg]) -> list[str]:

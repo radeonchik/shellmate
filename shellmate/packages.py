@@ -8,6 +8,7 @@ from difflib import SequenceMatcher
 
 from shellmate import backends
 from shellmate.backends.base import ANSI, Pkg, run_quiet  # noqa: F401  (re-exported for other modules)
+from shellmate.i18n import t
 
 
 def backend() -> backends.Backend:
@@ -170,12 +171,13 @@ def snapshot_plan() -> tuple[str, list[str] | None]:
     if auto:
         return auto, None
     if shutil.which("snapper") and "root" in run_quiet(["snapper", "list-configs"]):
-        return "сначала сделаю снимок системы (snapper)", [
+        return t("сначала сделаю снимок системы (snapper)", "I'll take a system snapshot first (snapper)"), [
             "sudo", "snapper", "-c", "root", "create", "-d", "before update (shellmate)"]
     if shutil.which("timeshift"):
-        return "сначала сделаю снимок системы (timeshift)", [
+        return t("сначала сделаю снимок системы (timeshift)", "I'll take a system snapshot first (timeshift)"), [
             "sudo", "timeshift", "--create", "--comments", "before update (shellmate)"]
-    return "снимков системы нет: если обновление что-то сломает, откатывать придётся пакеты по одному", None
+    return t("снимков системы нет: если обновление что-то сломает, откатывать придётся пакеты по одному",
+             "no system snapshots: if the update breaks something, packages will have to be rolled back one by one"), None
 
 
 # --- fallback for names the model garbled -----------------------------------------------------

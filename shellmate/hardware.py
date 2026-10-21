@@ -9,6 +9,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from shellmate.i18n import t
 from shellmate.packages import run_quiet
 from shellmate.system import meminfo
 
@@ -17,14 +18,16 @@ EFFICIENCY = 0.55  # llmfit's measured share of theoretical bandwidth that decod
 OVERHEAD = 0.6 * GB  # runtime + 8k-token KV cache (Ollama reports ~+0.05 GB for qwen3.5:4b)
 
 # per-backend bandwidth fallbacks, GB/s (llmfit's constants)
-BACKEND_BW = {"cuda": 220, "rocm": 180, "cpu": 70}
+BACKEND_BW = {"cuda": 220, "rocm": 180, "vulkan": 100, "cpu": 70}
 # known laptop/desktop GPUs, GB/s; matched as substrings of the GPU name
 GPU_BW = {"5090": 1792, "5080": 960, "5070 ti": 896, "5070": 672, "5060 ti": 448, "5060": 448,
           "5050 laptop": 384, "5050": 320, "4090": 1008, "4080": 717, "4070 ti": 504, "4070": 504,
           "4060 ti": 288, "4060": 272, "4050": 192, "3090": 936, "3080": 760, "3070": 448,
           "3060": 360, "3050": 224, "2080": 448, "2070": 448, "2060": 336, "1660": 192,
           "1650": 128, "7900 xtx": 960, "7900": 800, "7800": 624, "7700": 432, "7600": 288,
-          "6800": 512, "6700": 384, "6600": 224}
+          "6800": 512, "6700": 384, "6600": 224,
+          # Polaris (RX 4xx/5xx, Radeon Pro 4xx/5xx in MacBook Pro/iMac): Vulkan only
+          "rx 580": 256, "rx 570": 224, "rx 480": 256, "rx 470": 211, "555": 81, "560": 81, "460": 112}
 
 
 @dataclass
@@ -33,19 +36,28 @@ class Candidate:
     size: float  # bytes, fallback when the registry is unreachable
     quality: int  # 0-100, our rough judgement of routing/answer quality
     note: str = ""
+    note_en: str = ""
+
+    @property
+    def remark(self) -> str:
+        return t(self.note, self.note_en)
 
 
 # Only models that fit this assistant's job: tool-calling/JSON + multilingual, ≤ 9B.
 CATALOG = [
     # first four scored from eval/bench.py (routing 87 cases, quote selection 10 cases,
     # 2026-10-20, 8 GB laptop GPU); the rest are estimates
-    Candidate("qwen3.5:9b", 6.55 * GB, 89, "самые точные цитаты, но 5.5 ГБ VRAM и медленнее"),
-    Candidate("bonsai-2:9b", 3.18 * GB, 88, "тернарная; лучшая точность в тестах shellmate"),
+    Candidate("qwen3.5:9b", 6.55 * GB, 89, "самые точные цитаты, но 5.5 ГБ VRAM и медленнее",
+              "the most precise quotes, but 5.5 GB VRAM and slower"),
+    Candidate("bonsai-2:9b", 3.18 * GB, 88, "тернарная; лучшая точность в тестах shellmate",
+              "ternary; the best accuracy in shellmate's tests"),
     Candidate("qwen3.5:4b", 3.32 * GB, 82),
-    Candidate("bonsai-2:4b", 1.58 * GB, 80, "тернарная; быстрая и лёгкая, тесты почти без ошибок"),
+    Candidate("bonsai-2:4b", 1.58 * GB, 80, "тернарная; быстрая и лёгкая, тесты почти без ошибок",
+              "ternary; fast and light, nearly error-free in tests"),
     Candidate("qwen3.5:2b", 2.68 * GB, 62),
-    Candidate("bonsai-2:2b", 0.91 * GB, 52, "тернарная, свежая — мало независимых тестов"),
-    Candidate("qwen3.5:0.8b", 1.32 * GB, 38, "только для очень слабого железа"),
+    Candidate("bonsai-2:2b", 0.91 * GB, 52, "тернарная, свежая — мало независимых тестов",
+              "ternary, new — few independent tests"),
+    Candidate("qwen3.5:0.8b", 1.32 * GB, 38, "только для очень слабого железа", "only for very weak hardware"),
 ]
 
 
@@ -72,6 +84,16 @@ def _ollama_loaded(url: str) -> tuple[int, int]:
     return vram, sum(m.get("size", 0) for m in models) - vram
 
 
+def amd_rocm_ok(kfd: Path = Path("/sys/class/kfd/kfd/topology/nodes")) -> bool:
+    """Ollama's ROCm build covers RDNA2 and newer (gfx1030+). Older Radeons (Polaris, Vega...)
+    run it on CPU only, so they get the Vulkan build instead."""
+    for props in kfd.glob("*/properties"):
+        m = re.search(r"^gfx_target_version (\d+)", props.read_text(), re.M)
+        if m and int(m.group(1)) >= 100300:
+            return True
+    return False
+
+
 def detect(ollama_url: str) -> Hardware:
     mem = meminfo()
     own_vram, own_ram = _ollama_loaded(ollama_url)
@@ -89,7 +111,8 @@ def detect(ollama_url: str) -> Hardware:
             total = (card / "mem_info_vram_total")
             if total.exists() and int(total.read_text()) > 2 * GB:  # discrete AMD
                 used = int((card / "mem_info_vram_used").read_text())
-                hw.backend, hw.vram_total = "rocm", int(total.read_text())
+                hw.backend = "rocm" if amd_rocm_ok() else "vulkan"
+                hw.vram_total = int(total.read_text())
                 hw.vram_free = hw.vram_total - used + own_vram
                 hw.gpu_name = re.sub(r".*\[(.+)\].*", r"\1", run_quiet(["lspci", "-s", card.resolve().name]))
                 break
@@ -111,7 +134,9 @@ class Fit:
     installed: bool = False
 
 
-VERDICTS = {"perfect": "отлично", "good": "хорошо", "marginal": "впритык", "too_tight": "не влезет"}
+def verdict_label(v: str) -> str:
+    return {"perfect": t("отлично", "perfect"), "good": t("хорошо", "good"), "marginal": t("впритык", "tight"),
+            "too_tight": t("не влезет", "won't fit")}[v]
 
 
 def _verdict(util: float, mode: str) -> str:
@@ -162,20 +187,25 @@ def evaluate(hw: Hardware, ollama_url: str, online: bool = True) -> list[Fit]:
 
 
 def describe(hw: Hardware) -> list[tuple[str, str]]:
-    rows = [("Процессор", f"{hw.cores} потоков"),
-            ("Память", f"{hw.ram_total / 1024**3:.1f} ГБ, свободно {hw.ram_avail / 1024**3:.1f} ГБ")]
+    rows = [(t("Процессор", "CPU"), t(f"{hw.cores} потоков", f"{hw.cores} threads")),
+            (t("Память", "Memory"), t(f"{hw.ram_total / 1024**3:.1f} ГБ, свободно {hw.ram_avail / 1024**3:.1f} ГБ",
+                                      f"{hw.ram_total / 1024**3:.1f} GB, {hw.ram_avail / 1024**3:.1f} GB free"))]
     if hw.gpu_name:
-        rows.append(("Видеокарта", f"{hw.gpu_name}, {hw.vram_total / 1024**3:.1f} ГБ VRAM "
-                                   f"(доступно {hw.vram_free / 1024**3:.1f}), ~{hw.bandwidth:.0f} ГБ/с"))
+        rows.append((t("Видеокарта", "GPU"), t(f"{hw.gpu_name}, {hw.vram_total / 1024**3:.1f} ГБ VRAM "
+                                               f"(доступно {hw.vram_free / 1024**3:.1f}), ~{hw.bandwidth:.0f} ГБ/с",
+                                               f"{hw.gpu_name}, {hw.vram_total / 1024**3:.1f} GB VRAM "
+                                               f"({hw.vram_free / 1024**3:.1f} available), ~{hw.bandwidth:.0f} GB/s")))
     else:
-        rows.append(("Видеокарта", "подходящей нет — модель будет работать на процессоре"))
+        rows.append((t("Видеокарта", "GPU"), t("подходящей нет — модель будет работать на процессоре",
+                                               "none suitable — the model will run on the CPU")))
     return rows
 
 
 def ollama_install(hw: Hardware | None = None) -> str:
     """The command that installs Ollama on this distro (with the GPU-enabled build where it matters)."""
     from shellmate import backends
-    gpu = hw.backend if hw else ("cuda" if shutil.which("nvidia-smi") else "rocm" if Path("/dev/kfd").exists() else "cpu")
+    gpu = hw.backend if hw else ("cuda" if shutil.which("nvidia-smi") else
+                                 ("rocm" if amd_rocm_ok() else "vulkan") if Path("/dev/kfd").exists() else "cpu")
     return backends.current().ollama_install(gpu)
 
 

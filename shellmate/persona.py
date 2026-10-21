@@ -4,6 +4,7 @@
 from dataclasses import dataclass
 
 from shellmate.config import Config
+from shellmate.i18n import t
 
 
 @dataclass
@@ -11,6 +12,8 @@ class Style:
     title: str  # shown in the setup menu
     prompt: str  # injected into the model's system prompt
     phrases: dict[str, str]
+    title_en: str
+    phrases_en: dict[str, str]
 
 
 STYLES = {
@@ -31,6 +34,20 @@ STYLES = {
             "quotes": "Вот что пишут — дословно:",
             "no_evidence": "Источники нашёл, но прямого ответа на твой вопрос в них нет.",
         },
+        "Friendly — casual and simple, a joke is fine",
+        {
+            "hello": "Hey{addr_comma}! What do you need?",
+            "done": "Done!",
+            "cancelled": "Okay, cancelled.",
+            "not_found": "Hmm, found nothing for “{q}”.",
+            "unknown": "Can't help with that yet, but here's what I can do:",
+            "unclear": "Not quite sure what exactly {what}. Can you clarify?",
+            "run": "Run it?",
+            "failed": "Oops, the command failed, and I don't recognize the error.",
+            "healthy": "All clean: no failed services and no errors since boot!",
+            "quotes": "Here's what they say — word for word:",
+            "no_evidence": "Found sources, but they don't directly answer your question.",
+        },
     ),
     "butler": Style(
         "Как дворецкий — вежливо, на «вы», с достоинством",
@@ -49,6 +66,20 @@ STYLES = {
             "quotes": "Позвольте процитировать источники:",
             "no_evidence": "Боюсь, найденные источники не отвечают на ваш вопрос.",
         },
+        "Like a butler — polite, formal, dignified",
+        {
+            "hello": "At your service{addr_comma}. How may I be of help?",
+            "done": "Done{addr_comma}.",
+            "cancelled": "As you wish{addr_comma}, cancelling.",
+            "not_found": "I'm afraid nothing was found for “{q}”.",
+            "unknown": "I beg your pardon, that is beyond my remit. Here is how I can help:",
+            "unclear": "May I ask what exactly {what}?",
+            "run": "Shall I proceed{addr_comma}?",
+            "failed": "Regrettably, the command failed with an error unfamiliar to me.",
+            "healthy": "Pleased to report{addr_comma}: the system is in perfect order.",
+            "quotes": "Allow me to quote the sources:",
+            "no_evidence": "I'm afraid the sources found do not answer your question.",
+        },
     ),
     "brief": Style(
         "Кратко — только по делу, без лишних слов",
@@ -66,6 +97,20 @@ STYLES = {
             "quotes": "Цитаты:",
             "no_evidence": "В источниках ответа нет.",
         },
+        "Brief — to the point, no extra words",
+        {
+            "hello": "Ready.",
+            "done": "Done.",
+            "cancelled": "Cancelled.",
+            "not_found": "Not found: {q}",
+            "unknown": "Can't. Can:",
+            "unclear": "What {what}?",
+            "run": "Run?",
+            "failed": "Error, unknown.",
+            "healthy": "No errors.",
+            "quotes": "Quotes:",
+            "no_evidence": "No answer in the sources.",
+        },
     ),
 }
 CUSTOM_BASE = "friendly"  # phrasebook used with a user-described style
@@ -77,7 +122,8 @@ def style_of(cfg: Config) -> Style:
 
 def phrase(cfg: Config, key: str, **kw) -> str:
     addr = cfg.address.strip()
-    return style_of(cfg).phrases[key].format(addr_comma=f", {addr}" if addr else "", **kw)
+    s = style_of(cfg)
+    return t(s.phrases[key], s.phrases_en[key]).format(addr_comma=f", {addr}" if addr else "", **kw)
 
 
 def system_prompt(cfg: Config) -> str:
@@ -88,3 +134,7 @@ def system_prompt(cfg: Config) -> str:
     return (f"You are {cfg.name}, a small assistant living in the terminal of the user's "
             f"{backends.distro().name} computer. Communication style: {style}{who} "
             "Don't greet the user unless they greeted you first. Plain text for a terminal.")
+
+
+def title(s: Style) -> str:
+    return t(s.title, s.title_en)

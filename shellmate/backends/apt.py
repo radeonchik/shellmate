@@ -5,7 +5,8 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from shellmate.backends.base import Backend, Cleanup, Pkg, du, run_quiet, run_rc
+from shellmate.backends.base import Backend, Cleanup, Pkg, du, info_labels, run_quiet, run_rc
+from shellmate.i18n import t
 
 APT_HISTORY = Path("/var/log/apt/history.log")
 
@@ -61,7 +62,7 @@ class Apt(Backend):
 
     @property
     def sources_label(self) -> str:
-        return "репозитории apt" + (", Snap" if shutil.which("snap") else "")
+        return t("репозитории apt", "apt repositories") + (", Snap" if shutil.which("snap") else "")
 
     def installed_names(self) -> set[str]:
         out = run_quiet(["dpkg-query", "-W", "-f=${binary:Package}\t${db:Status-Abbrev}\n"])
@@ -83,7 +84,8 @@ class Apt(Backend):
         return out.split("\t", 1)[1].strip() if out.startswith("ii") and "\t" in out else None
 
     def hold_hint(self, names: list[str]) -> str:
-        return f"закрепи версию: sudo apt-mark hold {' '.join(names)}  (снять: sudo apt-mark unhold …)"
+        return t(f"закрепи версию: sudo apt-mark hold {' '.join(names)}  (снять: sudo apt-mark unhold …)",
+                 f"pin the version: sudo apt-mark hold {' '.join(names)}  (undo: sudo apt-mark unhold …)")
 
     def owner(self, path: str) -> tuple[str, str] | None:
         real = str(Path(path).resolve())  # /bin -> /usr/bin on merged-usr systems
@@ -99,19 +101,20 @@ class Apt(Backend):
         if len(lines) < 3:
             return []
         manual = name in run_quiet(["apt-mark", "showmanual", name]).split()
-        rows = [("Описание", lines[0]), ("Версия", lines[1]),
-                ("Размер", f"{int(lines[2]) / 1024:.1f} MiB" if lines[2].isdigit() else lines[2]),
-                ("Установлен", "вручную" if manual else "как зависимость")]
+        lb = info_labels()
+        rows = [(lb["desc"], lines[0]), (lb["version"], lines[1]),
+                (lb["size"], f"{int(lines[2]) / 1024:.1f} MiB" if lines[2].isdigit() else lines[2]),
+                (lb["reason"], lb["manual"] if manual else lb["dep"])]
         rdeps = run_quiet(["apt-cache", "rdepends", "--installed", "--no-recommends", "--no-suggests", name],
                           timeout=20).splitlines()
         needed = [r.strip().lstrip("|") for r in rdeps[2:] if r.strip()]
         if needed:
-            rows.append(("Нужен для", "  ".join(dict.fromkeys(needed))))
+            rows.append((lb["needed"], "  ".join(dict.fromkeys(needed))))
         return rows
 
     @property
     def provides_hint(self) -> str:
-        return "нужен apt-file с базой файлов"
+        return t("нужен apt-file с базой файлов", "apt-file with its file database is needed")
 
     provides_setup = ["sh", "-c", "sudo apt install -y apt-file && sudo apt-file update"]
     provides_setup_text = "sudo apt install apt-file && sudo apt-file update"
@@ -146,12 +149,12 @@ class Apt(Backend):
         res = []
         cache = Path("/var/cache/apt/archives")
         if cache.is_dir():
-            res.append(Cleanup("скачанные установочные пакеты в кэше apt", du(cache), ["sudo", "apt", "clean"]))
+            res.append(Cleanup(t("скачанные установочные пакеты в кэше apt", "downloaded packages in the apt cache"), du(cache), ["sudo", "apt", "clean"]))
         sim = run_quiet(["apt-get", "-s", "autoremove"], timeout=60)
         unused = re.findall(r"^Remv (\S+)", sim, re.M)
         if unused:
-            res.append(Cleanup(f"ненужные зависимости и старые ядра: {len(unused)} шт. — проверь список "
-                               f"перед «y»", None, ["sudo", "apt", "autoremove"], keep=True))
+            res.append(Cleanup(t(f"ненужные зависимости и старые ядра: {len(unused)} шт. — проверь список перед «y»",
+                                 f"unneeded dependencies and old kernels: {len(unused)} — check the list before “y”"), None, ["sudo", "apt", "autoremove"], keep=True))
         return res
 
     def last_upgrade(self) -> datetime | None:
@@ -163,7 +166,7 @@ class Apt(Backend):
     def auto_snapshot(self) -> str | None:
         for pkg in ("apt-btrfs-snapshot", "timeshift-autosnap-apt"):
             if self.installed_version(pkg):
-                return f"{pkg} сам сделает снимок системы перед обновлением"
+                return t(f"{pkg} сам сделает снимок системы перед обновлением", f"{pkg} will take a system snapshot before the update")
         return None
 
     def install_cmd(self, pkgs: list[Pkg]) -> list[str]:

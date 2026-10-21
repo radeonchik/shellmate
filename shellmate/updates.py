@@ -10,6 +10,7 @@ from importlib import metadata
 from pathlib import Path
 
 from shellmate import state
+from shellmate.i18n import t
 
 DIST = "shellmate"
 CHECK_EVERY = 86400
@@ -49,13 +50,13 @@ def update_command() -> tuple[list[str] | None, str]:
     """(command, how it was installed)."""
     src = source_checkout()
     if src:
-        return ["git", "-C", str(src), "pull", "--ff-only"], f"рабочая копия git ({src})"
+        return ["git", "-C", str(src), "pull", "--ff-only"], t(f"рабочая копия git ({src})", f"git working copy ({src})")
     prefix = sys.prefix.replace("\\", "/")
     if "/uv/tools/" in prefix and shutil.which("uv"):
         return ["uv", "tool", "upgrade", DIST], "uv tool"
     if "/pipx/venvs/" in prefix and shutil.which("pipx"):
         return ["pipx", "upgrade", DIST], "pipx"
-    return None, "непонятно как (не uv, не pipx, не git)"
+    return None, t("непонятно как (не uv, не pipx, не git)", "unclear how (not uv, pipx or git)")
 
 
 def latest_release(name: str, force: bool = False) -> str | None:
@@ -88,12 +89,12 @@ def newer_available(name: str) -> str | None:
 def make_alias(new: str) -> tuple[bool, str]:
     """~/.local/bin/<new> -> this executable: the same assistant under another name."""
     if not re.fullmatch(r"[a-z][a-z0-9_-]{1,30}", new):
-        return False, "имя: латиница в нижнем регистре, цифры, - и _"
+        return False, t("имя: латиница в нижнем регистре, цифры, - и _", "name: lowercase latin letters, digits, - and _")
     target = shutil.which(Path(sys.argv[0]).name) or str(Path(sys.argv[0]).resolve())
     link = Path.home() / ".local" / "bin" / new
     existing = shutil.which(new)
     if existing and Path(existing).resolve() != Path(target).resolve():
-        return False, f"команда «{new}» уже есть в системе ({existing})"
+        return False, t(f"команда «{new}» уже есть в системе ({existing})", f"the command “{new}” already exists ({existing})")
     link.parent.mkdir(parents=True, exist_ok=True)
     if link.is_symlink() or link.exists():
         link.unlink()

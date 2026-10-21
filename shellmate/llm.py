@@ -6,6 +6,8 @@ import shutil
 import urllib.error
 import urllib.request
 
+from shellmate.i18n import t
+
 
 class LLMError(Exception):
     pass
@@ -40,15 +42,17 @@ def chat_full(url: str, model: str, messages: list[dict], schema: dict | None = 
             body.pop("think")
             return _post(url, body, timeout)
         if e.code == 404:
-            raise LLMError(f"модель {model!r} не найдена — выполни: ollama pull {model}") from e
-        raise LLMError(f"Ollama ответила {e.code}: {detail}") from e
+            raise LLMError(t(f"модель {model!r} не найдена — выполни: ollama pull {model}",
+                             f"model {model!r} not found — run: ollama pull {model}")) from e
+        raise LLMError(t(f"Ollama ответила {e.code}: {detail}", f"Ollama answered {e.code}: {detail}")) from e
     except urllib.error.URLError as e:
         if not shutil.which("ollama"):
             from shellmate import hardware
-            hint = f"Ollama не установлена. Установи:\n  {hardware.ollama_install()}"
+            hint = t("Ollama не установлена. Установи:", "Ollama isn't installed. Install it:") + f"\n  {hardware.ollama_install()}"
         else:
-            hint = "Ollama установлена, но не запущена. Запусти:\n  sudo systemctl enable --now ollama"
-        raise LLMError(f"нет связи с Ollama ({url}: {e.reason}).\n{hint}") from e
+            hint = t("Ollama установлена, но не запущена. Запусти:", "Ollama is installed but not running. Start it:") + \
+                "\n  sudo systemctl enable --now ollama"
+        raise LLMError(t(f"нет связи с Ollama ({url}: {e.reason}).", f"can't reach Ollama ({url}: {e.reason}).") + f"\n{hint}") from e
 
 
 def _post(url: str, body: dict, timeout: float) -> dict:

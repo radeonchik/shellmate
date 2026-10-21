@@ -23,6 +23,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from shellmate import rag
+from shellmate.i18n import t
 
 UA = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
 MAX_PAGE = 1_500_000  # bytes
@@ -104,7 +105,7 @@ def _tavily_count(exhausted: bool = False) -> None:
 
 def _tavily(query: str, n: int, domains: list[str] | None) -> list[Result]:
     if tavily_usage()["exhausted"]:
-        raise RateLimited("Tavily: бесплатные запросы на этот месяц закончились")
+        raise RateLimited(t("Tavily: бесплатные запросы на этот месяц закончились", "Tavily: this month's free searches are used up"))
     body = {"query": query, "max_results": n, "search_depth": "basic", "include_raw_content": "text"}
     if domains:
         body["include_domains"] = domains
@@ -114,9 +115,9 @@ def _tavily(query: str, n: int, domains: list[str] | None) -> list[Result]:
     except urllib.error.HTTPError as e:
         if e.code in (432, 433):  # plan / pay-as-you-go limit
             _tavily_count(exhausted=True)
-            raise RateLimited("Tavily: лимит запросов исчерпан") from e
+            raise RateLimited(t("Tavily: лимит запросов исчерпан", "Tavily: request limit reached")) from e
         if e.code == 401:
-            raise WebError("Tavily: ключ не подходит (проверь tavily_key в конфиге)") from e
+            raise WebError(t("Tavily: ключ не подходит (проверь tavily_key в конфиге)", "Tavily: the key doesn't work (check tavily_key in the config)")) from e
         raise RateLimited(f"Tavily: HTTP {e.code}") from e
     _tavily_count()
     return [Result(r.get("title", ""), r["url"], r.get("content", ""), r.get("raw_content") or "")
@@ -144,7 +145,7 @@ def _searxng(query: str, n: int, domains: list[str] | None) -> list[Result]:
     if not res and data.get("unresponsive_engines"):
         # empty because its engines are suspended (CAPTCHA / 429) — that's a failure, not "nothing exists"
         down = ", ".join(e[0] for e in data["unresponsive_engines"])
-        raise RateLimited(f"SearXNG: поисковики не ответили ({down})")
+        raise RateLimited(t("SearXNG: поисковики не ответили", "SearXNG: the engines didn't answer") + f" ({down})")
     return res
 
 
@@ -173,7 +174,7 @@ def _duckduckgo(query: str, n: int, domains: list[str] | None) -> list[Result]:
 def _duckduckgo_lite(query: str, n: int) -> list[Result]:
     _, body = get("https://lite.duckduckgo.com/lite/?" + urllib.parse.urlencode({"q": query}))
     if "anomaly" in body and "result-link" not in body:
-        raise RateLimited("DuckDuckGo: капча после частых запросов")
+        raise RateLimited(t("DuckDuckGo: капча после частых запросов", "DuckDuckGo: a captcha after frequent requests"))
     res = []
     for m in re.finditer(r"<a[^>]+href=\"([^\"]+)\"[^>]*class='result-link'[^>]*>(.*?)</a>", body, re.S):
         url = html.unescape(m.group(1))
@@ -216,7 +217,7 @@ def search(query: str, searx_url: str = "", n: int = 6, domains: list[str] | Non
         return [Result(**r) for r in json.loads(path.read_text())]
     if searx_url and not SETTINGS.searx_url:
         SETTINGS.searx_url = searx_url
-    errors = []
+    errors, EMPTY = [], t("пусто", "empty")
     for name in available():
         try:
             res = PROVIDERS[name](query, n, domains)
@@ -231,11 +232,12 @@ def search(query: str, searx_url: str = "", n: int = 6, domains: list[str] | Non
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps([asdict(r) for r in res], ensure_ascii=False))
             return res
-        errors.append(f"{name}: пусто")
-    if any(e.endswith(": пусто") for e in errors):  # someone answered: there's just nothing
+        errors.append(f"{name}: " + EMPTY)
+    if any(e.endswith(": " + EMPTY) for e in errors):  # someone answered: there's just nothing
         return []
-    raise RateLimited("все поисковики сейчас недоступны (" + "; ".join(errors) + "). "
-                      "Надёжнее всего ключ Tavily: <имя помощника> --search-setup")
+    raise RateLimited(t("все поисковики сейчас недоступны (", "all search engines are unavailable right now (") + "; ".join(errors) +
+                      t("). Надёжнее всего ключ Tavily: <имя помощника> --search-setup",
+                        "). The most reliable fix is a Tavily key: <assistant name> --search-setup"))
 
 
 def search_many(queries: list[str], searx_url: str = "", n: int = 6) -> list[Result]:

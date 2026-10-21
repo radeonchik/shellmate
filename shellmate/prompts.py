@@ -2,6 +2,8 @@
 
 import re
 
+from shellmate.i18n import en, t
+
 EXPLAIN = """Explain what the given error, command or term means and give the most likely fix
 as concrete shell commands. The system is {system}: use {tools},
 NEVER {never}. NEVER suggest destructive commands (rm -rf, rm -r,
@@ -33,7 +35,7 @@ If they ask what you can do, use ONLY this list and never claim other abilities:
 {capabilities}
 You cannot run arbitrary commands or do anything not on this list."""
 
-CAPABILITIES = """  установить, удалить и найти программу ({sources})
+CAPABILITIES_RU = """  установить, удалить и найти программу ({sources})
   обновить систему (со снимком btrfs, если он настроен) и откатить пакет на старую версию
   показать место на диске, почистить мусор, найти самые большие файлы
   проверить систему: упавшие сервисы и ошибки в журнале
@@ -45,6 +47,23 @@ CAPABILITIES = """  установить, удалить и найти прог�
   найти ответ в интернете
   отвечать по твоим документам (добавь папку: «{name} добавь ~/Documents в источники»)
   объяснить ошибку (можно так: команда 2>&1 | {name} explain)"""
+
+CAPABILITIES_EN = """  install, remove and find programs ({sources})
+  update the system (with a btrfs snapshot if set up) and roll a package back to an older version
+  show disk space, clean up junk, find the biggest files
+  check the system: failed services and errors in the journal
+  manage services (sound, bluetooth, wi-fi…): status, restart, autostart
+  show what loads the CPU and memory, and close a program
+  tell which package a command or file comes from
+  system overview: hardware, drivers, temperature, battery
+  network: is the internet up, IP, Wi-Fi, who holds a port
+  find an answer on the web
+  answer from your documents (add a folder: “{name} add ~/Documents to sources”)
+  explain an error (like this: command 2>&1 | {name} explain)"""
+
+
+def capabilities() -> str:
+    return t(CAPABILITIES_RU, CAPABILITIES_EN)
 
 
 # a small model's free-form advice must never carry a command that can destroy data
@@ -59,13 +78,20 @@ def defang(reply: str) -> tuple[str, bool]:
     for line in reply.splitlines():
         if DANGEROUS.search(line):
             removed = True
-            out.append("⚠ [здесь была опасная команда — я её убрал]")
+            out.append(t("⚠ [здесь была опасная команда — я её убрал]", "⚠ [a dangerous command was here — I removed it]"))
         else:
             out.append(line)
     return "\n".join(out), removed
 
 
+def ui_language() -> str:
+    return t("Russian", "English")
+
+
 def lang_of(text: str) -> str:
+    """The language to answer in: the request's own, or the interface's when it has no letters."""
     if re.search(r"[іїєґ]", text, re.IGNORECASE):
         return "Ukrainian"
-    return "Russian" if re.search(r"[а-яё]", text, re.IGNORECASE) else "English"
+    if re.search(r"[а-яё]", text, re.IGNORECASE):
+        return "Russian"
+    return "English" if re.search(r"[a-z]", text, re.IGNORECASE) or en() else "Russian"

@@ -12,6 +12,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from shellmate.i18n import t
 from shellmate.packages import run_quiet
 
 # --- health -------------------------------------------------------------------
@@ -191,26 +192,28 @@ def _read(path: Path | str) -> str:
 def sysinfo() -> list[tuple[str, str]]:
     rows = []
     osr = dict(re.findall(r'^(\w+)="?([^"\n]*)"?$', _read("/etc/os-release"), re.M))
-    rows.append(("Система", f"{osr.get('PRETTY_NAME', 'Linux')}, ядро {os.uname().release}"))
+    rows.append((t("Система", "System"), f"{osr.get('PRETTY_NAME', 'Linux')}, " + t("ядро ", "kernel ") + os.uname().release))
     up = float(_read("/proc/uptime").split()[0] or 0)
-    rows.append(("Работает", f"{int(up // 86400)} д {int(up % 86400 // 3600)} ч {int(up % 3600 // 60)} мин"))
+    d, h, m = int(up // 86400), int(up % 86400 // 3600), int(up % 3600 // 60)
+    rows.append((t("Работает", "Uptime"), t(f"{d} д {h} ч {m} мин", f"{d} d {h} h {m} min")))
     cpu = re.search(r"model name\s*:\s*(.+)", _read("/proc/cpuinfo"))
     load = os.getloadavg()
-    rows.append(("Процессор", f"{cpu.group(1) if cpu else '?'} · {os.cpu_count()} потоков · "
-                              f"нагрузка {load[0]:.1f}"))
+    rows.append((t("Процессор", "CPU"), f"{cpu.group(1) if cpu else '?'} · " +
+                 t(f"{os.cpu_count()} потоков · нагрузка {load[0]:.1f}", f"{os.cpu_count()} threads · load {load[0]:.1f}")))
     mem = meminfo()
     used = mem["MemTotal"] - mem["MemAvailable"]
-    rows.append(("Память", f"{used / 1024**3:.1f} из {mem['MemTotal'] / 1024**3:.1f} ГБ занято"
-                           + (f", swap {(mem['SwapTotal'] - mem['SwapFree']) / 1024**3:.1f} ГБ"
-                              if mem.get("SwapTotal") else "")))
+    gb = t("ГБ", "GB")
+    rows.append((t("Память", "Memory"), t(f"{used / 1024**3:.1f} из {mem['MemTotal'] / 1024**3:.1f} ГБ занято",
+                                          f"{used / 1024**3:.1f} of {mem['MemTotal'] / 1024**3:.1f} GB used")
+                 + (f", swap {(mem['SwapTotal'] - mem['SwapFree']) / 1024**3:.1f} {gb}" if mem.get("SwapTotal") else "")))
     for gpu in gpus():
-        rows.append(("Видеокарта", gpu))
+        rows.append((t("Видеокарта", "GPU"), gpu))
     temps = temperatures()
     if temps:
-        rows.append(("Температура", ", ".join(f"{k} {v:.0f}°C" for k, v in temps)))
+        rows.append((t("Температура", "Temperature"), ", ".join(f"{k} {v:.0f}°C" for k, v in temps)))
     bat = battery()
     if bat:
-        rows.append(("Батарея", bat))
+        rows.append((t("Батарея", "Battery"), bat))
     return rows
 
 
@@ -223,20 +226,20 @@ def gpus() -> list[str]:
         name = re.search(r"\[([^\]]+)\][^\[]*$", line)
         name = name.group(1) if name else line.split(": ", 1)[-1]
         dev = Path("/sys/bus/pci/devices") / addr
-        driver = (dev / "driver").resolve().name if (dev / "driver").exists() else "нет драйвера"
+        driver = (dev / "driver").resolve().name if (dev / "driver").exists() else t("нет драйвера", "no driver")
         extra = ""
         if driver == "nvidia":
             ver = re.search(r"Module\s+.*?(\d+\.\d+(?:\.\d+)?)", _read("/proc/driver/nvidia/version"))
             extra = f" {ver.group(1)}" if ver else ""
             # nvidia-smi would wake a sleeping laptop dGPU, so only ask when it's already on
             if _read(dev / "power" / "runtime_status") == "suspended":
-                extra += ", сейчас спит (экономит батарею)"
+                extra += t(", сейчас спит (экономит батарею)", ", asleep now (saving battery)")
             elif shutil.which("nvidia-smi"):
                 q = run_quiet(["nvidia-smi", "--query-gpu=temperature.gpu,utilization.gpu,memory.used,"
                                "memory.total", "--format=csv,noheader,nounits"]).split(",")
                 if len(q) == 4:
-                    extra += f", {q[0].strip()}°C, загрузка {q[1].strip()}%, VRAM {q[2].strip()}/{q[3].strip()} МБ"
-        res.append(f"{name} · драйвер {driver}{extra}")
+                    extra += f", {q[0].strip()}°C, " + t("загрузка", "load") + f" {q[1].strip()}%, VRAM {q[2].strip()}/{q[3].strip()} " + t("МБ", "MB")
+        res.append(f"{name} · " + t("драйвер ", "driver ") + driver + extra)
     return res
 
 
@@ -256,14 +259,14 @@ def temperatures() -> list[tuple[str, float]]:
 def battery() -> str:
     for b in sorted(Path("/sys/class/power_supply").glob("BAT*")):
         cap, status = _read(b / "capacity"), _read(b / "status")
-        statuses = {"Charging": "заряжается", "Discharging": "разряжается", "Full": "полная",
-                    "Not charging": "не заряжается"}
+        statuses = {"Charging": t("заряжается", "charging"), "Discharging": t("разряжается", "discharging"),
+                    "Full": t("полная", "full"), "Not charging": t("не заряжается", "not charging")}
         power = _read(b / "power_now")
-        watts = f", {int(power) / 1e6:.1f} Вт" if power.isdigit() and int(power) else ""
+        watts = f", {int(power) / 1e6:.1f} " + t("Вт", "W") if power.isdigit() and int(power) else ""
         health = ""
         full, design = _read(b / "energy_full"), _read(b / "energy_full_design")
         if full.isdigit() and design.isdigit() and int(design):
-            health = f", износ {100 - round(100 * int(full) / int(design))}%"
+            health = t(", износ ", ", wear ") + f"{100 - round(100 * int(full) / int(design))}%"
         return f"{cap}% ({statuses.get(status, status)}{watts}{health})"
     return ""
 
@@ -290,7 +293,7 @@ def wifi() -> str:
         for line in run_quiet(["nmcli", "-t", "-f", "ACTIVE,SSID,SIGNAL", "dev", "wifi"]).splitlines():
             parts = line.split(":")
             if parts[0] == "yes" and len(parts) >= 3:
-                return f"{parts[1]} (сигнал {parts[2]}%)"
+                return f"{parts[1]} (" + t("сигнал", "signal") + f" {parts[2]}%)"
     return ""
 
 
@@ -301,10 +304,10 @@ def check_internet() -> tuple[bool, bool, float | None]:
         dns = True
     except OSError:
         dns = False
-    t = time.perf_counter()
+    t0 = time.perf_counter()
     try:
         socket.create_connection(("1.1.1.1", 443), timeout=3).close()
-        return dns, True, (time.perf_counter() - t) * 1000
+        return dns, True, (time.perf_counter() - t0) * 1000
     except OSError:
         return dns, False, None
 
@@ -324,6 +327,6 @@ def port_users(port: int) -> list[str]:
     for line in out.splitlines():
         parts = line.split()
         procs = re.findall(r'\("([^"]+)",pid=(\d+)', line)
-        who = ", ".join(f"{n} (pid {p})" for n, p in procs) or "процесс другого пользователя (нужен sudo)"
+        who = ", ".join(f"{n} (pid {p})" for n, p in procs) or t("процесс другого пользователя (нужен sudo)", "another user's process (needs sudo)")
         res.append(f"{parts[0]} {parts[4] if len(parts) > 4 else ''} ← {who}")
     return res

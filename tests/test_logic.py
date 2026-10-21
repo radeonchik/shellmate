@@ -7,7 +7,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from shellmate import errors, news, packages, prompts, rag, router, ui  # noqa: E402
+from shellmate import errors, hardware, news, packages, prompts, rag, router, ui  # noqa: E402
 from shellmate.evidence import Sentence, off_topic  # noqa: E402
 
 
@@ -99,6 +99,16 @@ class Misc(unittest.TestCase):
         self.assertEqual(news._affected("Breaking changes for `varnish`, which is renamed", installed), [])
         self.assertEqual(news._affected("Arch Linux 2026 Leader Election Results", installed), [])
 
+    def test_old_radeon_gets_vulkan(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            for node, gfx in (("0", 0), ("1", 80003)):  # CPU node + Polaris (Radeon Pro 555X)
+                (Path(d) / node).mkdir()
+                (Path(d) / node / "properties").write_text(f"cpu_cores_count 0\ngfx_target_version {gfx}\n")
+            self.assertFalse(hardware.amd_rocm_ok(Path(d)))
+            (Path(d) / "1" / "properties").write_text("gfx_target_version 110000\n")  # RX 7900
+            self.assertTrue(hardware.amd_rocm_ok(Path(d)))
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -120,3 +130,42 @@ class Config(unittest.TestCase):
         except ModuleNotFoundError:
             return
         self.assertEqual({k: v for k, v in tomllib.loads(text).items()}, flat)
+
+    def test_save_load_roundtrip(self):
+        import os
+        import tempfile
+
+        from shellmate import config
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": d}):
+            cfg = config.load("t")
+            cfg.escalate_intent, cfg.docs, cfg.lang = 0.35, ["/x"], "en"
+            config.save(cfg)
+            self.assertEqual(config.load("t"), cfg)
+            # 0.2.0 wrote floats as strings: they must still load as numbers
+            path = config.config_path("t")
+            path.write_text(path.read_text().replace("escalate_intent = 0.35", 'escalate_intent = "0.35"'))
+            self.assertEqual(config.load("t").escalate_intent, 0.35)
+
+
+class Language(unittest.TestCase):
+    def test_both_languages(self):
+        from shellmate import errors, i18n, persona
+        try:
+            for lang in i18n.LANGS:
+                i18n.set_lang(lang)
+                self.assertTrue(router.doubts(router.Intent("unknown"), "x", 0.5, 0.5))
+                self.assertTrue(errors.match("error: target not found: foo")[0][0])
+                for style in persona.STYLES.values():
+                    self.assertEqual(set(style.phrases), set(style.phrases_en))
+            i18n.set_lang("en")
+            self.assertIn("foo", errors.match("error: target not found: foo")[0][0])
+            self.assertTrue(all(k.what_en and k.fix_en for k in errors.KNOWN))
+        finally:
+            i18n.set_lang("ru")
+
+    def test_system_lang(self):
+        from shellmate import i18n
+        with mock.patch.dict("os.environ", {"LC_ALL": "", "LC_MESSAGES": "", "LANG": "ru_RU.UTF-8"}):
+            self.assertEqual(i18n.system_lang(), "ru")
+        with mock.patch.dict("os.environ", {"LC_ALL": "de_DE.UTF-8"}):
+            self.assertEqual(i18n.system_lang(), "en")

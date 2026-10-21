@@ -7,17 +7,19 @@ from pathlib import Path
 
 from shellmate import backends
 from shellmate.backends.base import Cleanup, du, run_quiet
+from shellmate.i18n import t
 
 MIN_CLEANUP = 50 * 1024**2  # don't bother the user with less than 50 MB
 UNITS = {"B": 1, "KiB": 1024, "MiB": 1024**2, "GiB": 1024**3, "TiB": 1024**4}
 
 
 def human(n: float) -> str:
-    for unit in ("Б", "КБ", "МБ", "ГБ"):
+    units = t("Б КБ МБ ГБ ТБ", "B KB MB GB TB").split()
+    for unit in units[:-1]:
         if n < 1024:
-            return f"{n:.0f} {unit}" if unit == "Б" else f"{n:.1f} {unit}"
+            return f"{n:.0f} {unit}" if unit == units[0] else f"{n:.1f} {unit}"
         n /= 1024
-    return f"{n:.1f} ТБ"
+    return f"{n:.1f} {units[-1]}"
 
 
 def _parse_size(num: str, unit: str) -> int:
@@ -65,13 +67,13 @@ def cleanup_candidates() -> list[Cleanup]:
     if m:
         journal = _parse_size(m.group(1), {"K": "KiB", "M": "MiB", "G": "GiB"}.get(m.group(2), "B"))
         if journal > 300 * 1024**2:
-            res.append(Cleanup("системные логи (оставлю последние 100 МБ)", journal - 100 * 1024**2,
+            res.append(Cleanup(t("системные логи (оставлю последние 100 МБ)", "system logs (keeping the last 100 MB)"), journal - 100 * 1024**2,
                                ["sudo", "journalctl", "--vacuum-size=100M"]))
     trash = home / ".local" / "share" / "Trash"
     if trash.exists() and shutil.which("gio"):
-        res.append(Cleanup("корзина", _du(trash), ["gio", "trash", "--empty"]))
+        res.append(Cleanup(t("корзина", "trash"), _du(trash), ["gio", "trash", "--empty"]))
     if shutil.which("flatpak"):
-        res.append(Cleanup("неиспользуемые рантаймы Flatpak", None,
+        res.append(Cleanup(t("неиспользуемые рантаймы Flatpak", "unused Flatpak runtimes"), None,
                            ["flatpak", "uninstall", "--unused"]))
     useful = [c for c in res if c.size is None or c.keep or c.size >= MIN_CLEANUP]
     return sorted(useful, key=lambda c: -(c.size or 0))
