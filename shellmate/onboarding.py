@@ -113,7 +113,13 @@ def model_step(cfg: config.Config) -> None:
             f"{ui.dim('$')} {hardware.ollama_install(hw)}",
             f"{ui.dim('$')} ollama pull {best.cand.tag}"], "warn", "!")
         return
-    ans = _prompt(f"Enter — взять рекомендованную, номер — другую {ui.dim(f'(сейчас: {cfg.model})')}: ")
+    if not hardware.ollama_running(cfg.ollama_url):  # installed, service stopped: pull would fail
+        cfg.model = best.cand.tag
+        ui.panel("Ollama не запущена", [
+            f"{ui.dim('$')} sudo systemctl enable --now ollama",
+            f"потом ещё раз: {ui.dim('$')} {cfg.name} --pick-model"], "warn", "!")
+        return
+    ans =_prompt(f"Enter — взять рекомендованную, номер — другую {ui.dim(f'(сейчас: {cfg.model})')}: ")
     pick = fits[int(ans) - 1] if ans.isdigit() and 1 <= int(ans) <= len(fits[:5]) else best
     if not pick.installed:
         cmd = ["ollama", "pull", pick.cand.tag]

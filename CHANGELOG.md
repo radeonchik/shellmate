@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `get.sh`: install in one command (`curl -fsSL …/get.sh | sh`) — uv and shellmate without sudo,
+  git/fzf/Ollama only after asking, then the onboarding. Checked in CI under dash.
+
 ## 0.2.0
 
 - Debian, Ubuntu (+ Snap), Mint, Fedora and relatives, besides Arch: package backends for apt and dnf

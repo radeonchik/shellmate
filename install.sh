@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installs the assistant from this checkout under a name of your choice: ./install.sh friday
-# (Without cloning: `uv tool install git+https://github.com/radeonchik/shellmate`, then `shellmate --alias friday`.)
+# (Without cloning: `curl -fsSL https://raw.githubusercontent.com/radeonchik/shellmate/main/get.sh | sh -s -- friday`.)
 set -euo pipefail
 
 NAME="${1:-}"

@@ -38,3 +38,13 @@ jobs:
         run: python3 -m unittest discover -s tests
       - name: Self-test of the distro backend
         run: python3 -m shellmate --selftest
+
+  # the one-line installer as a new user runs it (non-root, no terminal: no sudo steps), under dash
+  get-script:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck get.sh
+      - name: Install from this checkout with get.sh
+        run: SHELLMATE_SOURCE="$PWD" sh get.sh friday </dev/null
+      - run: ~/.local/bin/friday --selftest

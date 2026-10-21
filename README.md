@@ -35,7 +35,17 @@ Flatpak — везде. Проверить, как помощник работа
 
 ## Установка
 
-Нужны [uv](https://docs.astral.sh/uv/) и [Ollama](https://ollama.com):
+Одной командой (Arch/CachyOS, Debian, Ubuntu, Fedora):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/radeonchik/shellmate/main/get.sh | sh
+```
+
+Скрипт ставит [uv](https://docs.astral.sh/uv/) и shellmate без sudo, а git, fzf и
+[Ollama](https://ollama.com) — только спросив. В конце предложит познакомиться: стиль, цвет,
+подбор модели под железо. Своё имя помощнику: `… | sh -s -- friday`.
+
+Или вручную:
 
 ```sh
 curl -LsSf https://astral.sh/uv/install.sh | sh          # uv (или из пакетов дистрибутива)
