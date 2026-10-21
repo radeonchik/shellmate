@@ -1,6 +1,6 @@
 [project]
 name = "shellmate"
-version = "0.2.0"
+version = "0.3.0"
 description = "A smart terminal: plain-language requests, local LLM, every command confirmed (Arch, Debian, Ubuntu, Fedora)"
 requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
