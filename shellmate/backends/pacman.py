@@ -7,6 +7,7 @@ from functools import cmp_to_key
 from pathlib import Path
 
 from shellmate.backends.base import VULKAN_ON, Backend, Cleanup, Pkg, du, info_labels, run_quiet
+from shellmate import pkglog
 from shellmate.i18n import t
 
 HEADER = re.compile(r"^(\S+)/(\S+) (\S+)(.*)$")
@@ -150,6 +151,12 @@ class Pacman(Backend):
             return datetime.fromisoformat(stamps[-1].replace("Z", "+00:00")) if stamps else None
         except ValueError:
             return None
+
+    def transactions(self) -> list:
+        try:
+            return pkglog.parse_pacman_log(PACMAN_LOG.read_text(errors="replace"))
+        except OSError:
+            return []
 
     def news_feeds(self) -> list[tuple[str, str]]:
         feeds = [("Arch Linux", "https://archlinux.org/feeds/news/")]

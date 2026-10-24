@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from shellmate.backends.base import Backend, Cleanup, Pkg, du, info_labels, run_quiet
+from shellmate import pkglog
 from shellmate.i18n import t
 
 QF = "%{name}\t%{evr}\t%{summary}\n"
@@ -141,6 +142,9 @@ class Dnf(Backend):
 
     def last_upgrade(self) -> datetime | None:
         return None  # no news feeds to compare against on Fedora (yet)
+
+    def transactions(self) -> list:
+        return pkglog.parse_rpm_installtimes(run_quiet(["rpm", "-qa", "--qf", "%{INSTALLTIME} %{NAME} %{VERSION}-%{RELEASE}\n"]))
 
     def auto_snapshot(self) -> str | None:
         for pkg in ("python3-dnf-plugin-snapper", "libdnf5-plugin-actions-snapper"):

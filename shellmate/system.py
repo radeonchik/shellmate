@@ -10,6 +10,7 @@ import socket
 import time
 import urllib.request
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from shellmate.i18n import t
@@ -57,9 +58,15 @@ class LogError:
     count: int
 
 
-def boot_errors(limit: int = 12) -> list[LogError]:
-    """Errors since boot, de-duplicated (numbers/hex ignored) and most frequent first."""
-    out = run_quiet(["journalctl", "-b", "-p", "err", "--no-pager", "-o", "json",
+def error_key(source: str, message: str) -> tuple[str, str]:
+    """Errors that differ only in numbers or addresses are one error."""
+    return source, re.sub(r"0x[0-9a-f]+|\d+", "#", message.lower())
+
+
+def journal_errors(*args: str, limit: int = 12) -> list[LogError]:
+    """Errors from the journal (journalctl args pick the time: -b, --since @…), de-duplicated and
+    most frequent first."""
+    out = run_quiet(["journalctl", *args, "-p", "err", "--no-pager", "-o", "json",
                      "--output-fields=SYSLOG_IDENTIFIER,MESSAGE"])
     groups: dict[tuple[str, str], LogError] = {}
     for line in out.splitlines():
@@ -71,12 +78,27 @@ def boot_errors(limit: int = 12) -> list[LogError]:
         if isinstance(msg, list):  # non-UTF8 messages come as byte arrays
             msg = bytes(msg).decode(errors="replace")
         src = e.get("SYSLOG_IDENTIFIER") or "?"
-        key = (src, re.sub(r"0x[0-9a-f]+|\d+", "#", msg.lower()))
+        key = error_key(src, msg)
         if key in groups:
             groups[key].count += 1
         else:
             groups[key] = LogError(src, msg.strip(), 1)
     return sorted(groups.values(), key=lambda g: -g.count)[:limit]
+
+
+def boot_errors(limit: int = 12) -> list[LogError]:
+    """Errors since boot."""
+    return journal_errors("-b", limit=limit)
+
+
+def boots() -> list[tuple[datetime, datetime]]:
+    """(first entry, last entry) of every boot the journal still remembers, oldest first."""
+    try:
+        data = json.loads(run_quiet(["journalctl", "--list-boots", "-o", "json", "--no-pager"]) or "[]")
+    except json.JSONDecodeError:
+        return []
+    return [(datetime.fromtimestamp(b["first_entry"] / 1e6).astimezone(), datetime.fromtimestamp(b["last_entry"] / 1e6).astimezone())
+            for b in data if b.get("first_entry") and b.get("last_entry")]
 
 
 # --- services -----------------------------------------------------------------

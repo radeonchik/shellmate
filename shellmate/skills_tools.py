@@ -1,12 +1,13 @@
-"""Intent handlers for tools: explaining a command before it runs (more follow).
+"""Intent handlers for tools: explaining a command before it runs, what broke after an update.
 Mixed into cli.App, so `self` has say/phrase/execute/cfg/_translate."""
 
 import shutil
 import sys
 import urllib.parse
+from datetime import datetime, timedelta
 
-from shellmate import cmdcheck, library, manpages, ui, web
-from shellmate.i18n import t
+from shellmate import afterupdate, cmdcheck, library, manpages, news, packages, router, ui, web
+from shellmate.i18n import plural, t
 from shellmate.prompts import lang_of, ui_language
 
 LEVEL = {"danger": ("err", "✗"), "caution": ("warn", "!"), "info": ("accent", "·")}
@@ -122,6 +123,80 @@ class ToolSkills:
         title = {"danger": t("Опасно", "Dangerous"), "caution": t("Осторожно", "Careful")}.get(worst, t("Вердикт", "Verdict"))
         ui.panel(title, lines, color, {"danger": "✗", "caution": "!"}.get(worst, "✓"))
 
+    # --- what broke after the update -------------------------------------------------------------
+
+    def afterupdate(self, it, query: str) -> int:
+        be = packages.backend()
+        sub = it.text if it.text in afterupdate.SUBSYSTEMS else afterupdate.subsystem_of(query)
+        with ui.working(t("читаю журнал пакетов и системный журнал…", "reading the package log and the system journal…")):
+            report = afterupdate.analyze(be.transactions(), sub, lambda path: (be.owner(path) or (None,))[0])
+        if not report:
+            self.say(ui.yellow(t("в журнале пакетов нет ни одного обновления", "the package log has no updates at all")))
+            return 1
+        upd = report.update
+        top = afterupdate.important(upd.upgrades)
+        lines = [ui.bold(upd.time.strftime("%Y-%m-%d %H:%M")) + ui.dim(f" · {ago(upd.time)} · ") +
+                 plural(len(upd.changes), ("пакет", "пакета", "пакетов"), ("package", "packages")), ""]
+        shown = (afterupdate.subsystem_changes(upd, sub) or top)[:8]
+        lines += [f"  {afterupdate.version_arrow(c)}" for c in shown]
+        if len(upd.changes) > len(shown):
+            lines.append(ui.dim(t(f"  …и ещё {len(upd.changes) - len(shown)}", f"  …and {len(upd.changes) - len(shown)} more")))
+        ui.panel(t("Последнее обновление", "The last update"), lines, "accent", "⟳")
+        for note in report.notes:
+            ui.panel(t("Нужна перезагрузка", "A reboot is needed"), [note], "warn", "⟳")
+        if report.errors:
+            head = t("Новые ошибки после обновления", "New errors after the update") if report.journal_covers else \
+                t("Ошибки этой загрузки (журнал не помнит, что было до обновления)",
+                  "Errors of this boot (the journal doesn't remember what was before the update)")
+            err_lines = []
+            for s in report.errors:
+                err_lines.append(f"{ui.yellow(('×' + str(s.error.count)).rjust(4))} {ui.bold(s.error.source)}: {s.error.message[:110]}")
+                if s.changes:
+                    label = t("из пакета", "from the package") if s.strong else t("возможно связано", "possibly related")
+                    err_lines.append(ui.dim(f"       → {label}: " + ", ".join(afterupdate.version_arrow(c) for c in s.changes[:3])))
+            ui.panel(head, err_lines, "warn", "⚑")
+        elif report.journal_covers:
+            self.say(ui.green(t("новых ошибок после обновления в журнале нет", "no new errors in the journal since the update")))
+        else:
+            self.say(ui.green(t("ошибок в журнале этой загрузки нет", "no errors in this boot's journal")))
+        if be.news_feeds():
+            with ui.working(t("смотрю новости дистрибутива за те дни…", "checking the distribution news of those days…")):
+                items = [i for i in news.since(upd.time - timedelta(days=21)) if i.date <= upd.time + timedelta(days=3)]
+            self.show_news(items, None, empty_ok=False)
+        return self._afterupdate_menu(report, query)
+
+    def _afterupdate_menu(self, report, query: str) -> int:
+        upd = report.update
+        suspects = list(dict.fromkeys(c.name for s in report.errors for c in s.changes if c.action in ("upgraded", "downgraded")))
+        while sys.stdin.isatty():
+            options, actions = [], []
+            if suspects:
+                options.append(t("откатить: ", "roll back: ") + ", ".join(suspects[:4]))
+                actions.append(lambda: self.downgrade(router.Intent("downgrade", suspects[:4]), query))
+            if report.errors:
+                options.append(t("объяснить ошибку…", "explain an error…"))
+                actions.append(lambda: self._explain_one(report))
+            options.append(t(f"все пакеты этого обновления ({len(upd.changes)})", f"every package of this update ({len(upd.changes)})"))
+            actions.append(lambda: ui.panel(t("Пакеты обновления", "The update's packages"),
+                                            [afterupdate.version_arrow(c) for c in afterupdate.important(upd.changes)], "accent", "⟳") or 0)
+            if packages.installed_version("snapper") or packages.installed_version("timeshift"):
+                options.append(t("как откатить всю систему снимком", "how to roll the whole system back with a snapshot"))
+                actions.append(lambda: ui.panel(t("Откат всей системы", "Rolling back the whole system"), [
+                    t("снимком btrfs: открой btrfs-assistant или Timeshift, или выбери снимок в меню загрузчика",
+                      "with a btrfs snapshot: open btrfs-assistant or Timeshift, or pick a snapshot in the boot menu")], "accent", "🛟") or 0)
+            i = ui.choose(options, t("что дальше >", "what next >"))
+            if i is None:
+                return 0
+            actions[i]()
+        return 0
+
+    def _explain_one(self, report) -> int:
+        i = ui.choose([f"{s.error.source}: {s.error.message[:120]}" for s in report.errors], t("какую >", "which >"))
+        if i is None:
+            return 0
+        e = report.errors[i].error
+        return self.explain_text(f"{e.source}: {e.message}", "")
+
     def script_report(self, url: str) -> int:
         """What a downloaded install script would do, line by line, without running any of it."""
         with ui.working(t("скачиваю скрипт (не запускаю)…", "downloading the script (not running it)…")):
@@ -163,6 +238,15 @@ class ToolSkills:
         ui.panel(t(f"Что внутри скрипта с {host}", f"What's inside the script from {host}"), out,
                  "err" if any(f.level == "danger" for _, f in found) else "warn" if found else "ok", "§")
         return 0
+
+
+def ago(when: datetime) -> str:
+    d = datetime.now().astimezone() - when
+    if d < timedelta(hours=1):
+        return t("меньше часа назад", "less than an hour ago")
+    if d < timedelta(days=1):
+        return plural(int(d.total_seconds() // 3600), ("час", "часа", "часов"), ("hour", "hours")) + t(" назад", " ago")
+    return plural(d.days, ("день", "дня", "дней"), ("day", "days")) + t(" назад", " ago")
 
 
 def _unique(cmds: list[cmdcheck.Simple]) -> list[cmdcheck.Simple]:

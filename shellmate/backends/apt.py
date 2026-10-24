@@ -1,11 +1,13 @@
 """Debian and derivatives (Ubuntu, Mint, Pop!_OS): apt / dpkg."""
 
+import gzip
 import re
 import shutil
 from datetime import datetime
 from pathlib import Path
 
 from shellmate.backends.base import Backend, Cleanup, Pkg, du, info_labels, run_quiet, run_rc
+from shellmate import pkglog
 from shellmate.i18n import t
 
 APT_HISTORY = Path("/var/log/apt/history.log")
@@ -162,6 +164,16 @@ class Apt(Backend):
             return parse_history(APT_HISTORY.read_text(errors="replace"))
         except OSError:
             return None
+
+    def transactions(self) -> list:
+        texts = []
+        for p in sorted(APT_HISTORY.parent.glob("history.log*"), key=lambda p: p.name, reverse=True)[-4:]:
+            try:  # history.log.2.gz, history.log.1.gz, history.log: oldest first
+                texts.append(gzip.decompress(p.read_bytes()).decode(errors="replace") if p.suffix == ".gz"
+                             else p.read_text(errors="replace"))
+            except (OSError, EOFError, gzip.BadGzipFile):
+                continue
+        return pkglog.parse_apt_history("\n\n".join(texts))
 
     def auto_snapshot(self) -> str | None:
         for pkg in ("apt-btrfs-snapshot", "timeshift-autosnap-apt"):

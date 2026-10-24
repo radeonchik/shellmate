@@ -152,6 +152,10 @@ class Backend:
     def last_upgrade(self) -> datetime | None:
         return None
 
+    def transactions(self) -> list:
+        """pkglog.Txn list, oldest first: what each package-manager run changed."""
+        return []
+
     def news_feeds(self) -> list[tuple[str, str]]:
         return []
 
