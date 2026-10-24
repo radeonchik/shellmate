@@ -9,12 +9,14 @@ import difflib
 import json
 import os
 import re
+import shutil
 import stat
+import subprocess
 import sys
 import time
 from pathlib import Path
 
-from shellmate import (config, disk, docs, errors, i18n, llm, news, onboarding, packages, persona, router, runner,
+from shellmate import (cmdcheck, config, disk, docs, errors, i18n, llm, news, onboarding, packages, persona, router, runner,
                     state, system, ui, updates, web)
 from shellmate.i18n import plural, t
 from shellmate.packages import Pkg
@@ -22,6 +24,7 @@ from shellmate.prompts import (CHAT_TASK, TRANSLATE_AGAIN, TRANSLATE_SCHEMA, TRA
                                defang, explain_task, lang_of, ui_language)
 from shellmate.skills_knowledge import KnowledgeSkills
 from shellmate.skills_system import SystemSkills
+from shellmate.skills_tools import ToolSkills, known_program
 
 
 def pick_color(name: str, current: str) -> str | None:
@@ -43,6 +46,19 @@ def agent_name() -> str:
     return "shellmate" if n.startswith("python") or n.endswith(".py") else n
 
 
+def clipboard() -> str:
+    """The clipboard's text (Wayland or X11), '' when there's no tool or nothing in it."""
+    for cmd in (["wl-paste", "--no-newline"], ["xclip", "-o", "-selection", "clipboard"], ["xsel", "-b", "-o"]):
+        if shutil.which(cmd[0]):
+            try:
+                out = subprocess.run(cmd, capture_output=True, text=True, timeout=3).stdout.strip()
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+            if out:
+                return out
+    return ""
+
+
 def read_piped() -> str:
     """Reads stdin only when something is really piped or redirected into us — a bare
     non-tty stdin (cron, scripts, IDE runners) would otherwise block forever."""
@@ -61,7 +77,7 @@ def fmt(p: Pkg) -> str:
     return f"{ui.bold(name)} {ui.dim(p.source + ' ' + p.version)}{mark}  {p.desc}"
 
 
-class App(SystemSkills, KnowledgeSkills):
+class App(SystemSkills, KnowledgeSkills, ToolSkills):
     def __init__(self, cfg: config.Config, dry_run: bool):
         self.cfg = cfg
         self.dry = dry_run
@@ -386,6 +402,8 @@ class App(SystemSkills, KnowledgeSkills):
         return self.explain_text(it.text or query, query)
 
     def explain_text(self, text: str, query: str) -> int:
+        if cmdcheck.looks_like_command(text, known_program):  # a command to check, not an error to explain
+            return self.check_command(text, query)
         hits = errors.match(text, self.cfg.name)
         for what, fix in hits[:2]:
             ui.problem(what, fix)
@@ -641,6 +659,19 @@ end
 """
 
 
+FISH_CHECK = r"""# Installed by `{name} --install-shell`: Alt+E explains the command line without running it.
+function __{fn}_check
+    set -l cmd (commandline)
+    test -n "$cmd"; or return
+    echo
+    command {name} --check "$cmd"
+    commandline -f repaint
+end
+bind \ee __{fn}_check
+bind -M insert \ee __{fn}_check 2>/dev/null
+"""
+
+
 def install_shell(name: str) -> int:
     base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
     hook = base / "fish" / "functions" / "fish_command_not_found.fish"
@@ -648,14 +679,22 @@ def install_shell(name: str) -> int:
     if hook.exists() and "--install-shell" not in hook.read_text():
         hook.rename(hook.with_suffix(".fish.bak"))  # someone's own handler: keep it
     hook.write_text(FISH_HOOK.format(name=name))
+    check = base / "fish" / "conf.d" / f"{name}-check.fish"
+    check.parent.mkdir(parents=True, exist_ok=True)
+    check.write_text(FISH_CHECK.format(name=name, fn=re.sub(r"\W", "_", name)))
     ui.panel(t("Готово: fish будет спрашивать меня о ненайденных командах", "Done: fish will ask me about commands it can't find"), [
         t(f"файл: {docs.short(str(hook))} — удали его, чтобы вернуть как было",
           f"file: {docs.short(str(hook))} — delete it to get the old behavior back"),
+        t(f"Alt+E — объясню набранную команду, не запуская её ({docs.short(str(check))})",
+          f"Alt+E — I explain the typed command without running it ({docs.short(str(check))})"),
         ui.dim(t("открой новый терминал или выполни: source ", "open a new terminal or run: source ") + docs.short(str(hook))),
         "",
         ui.dim(t("для bash/zsh добавь в ~/.bashrc или ~/.zshrc:", "for bash/zsh add to ~/.bashrc or ~/.zshrc:")),
         ui.dim(f'  command_not_found_handle()  {{ {name} --not-found "$1"; return 127; }}   # bash'),
         ui.dim(f'  command_not_found_handler() {{ {name} --not-found "$1"; return 127; }}   # zsh'),
+        ui.dim(f"""  bind -x '"\\ee": {name} --check "$READLINE_LINE"'   # bash: Alt+E"""),
+        ui.dim(f"""  _{re.sub(r"\W", "_", name)}_check() {{ echo; {name} --check "$BUFFER"; zle reset-prompt; }}; """
+               f"""zle -N _{re.sub(r"\W", "_", name)}_check; bindkey '\\ee' _{re.sub(r"\W", "_", name)}_check   # zsh: Alt+E"""),
     ], "ok", "✓")
     return 0
 
@@ -687,6 +726,9 @@ def main(argv: list[str] | None = None) -> int:
                                "the assistant's color: a theme (classic, matrix, sunset…), #hex, or nothing for a menu"))
     parser.add_argument("--add-docs", metavar="PATH", help=t("добавить папку или файл в источники документов",
                                                              "add a folder or a file to the document sources"))
+    parser.add_argument("--check", nargs="?", const="", metavar=t("КОМАНДА", "COMMAND"),
+                        help=t("объяснить команду, не запуская её (без аргумента — из буфера обмена)",
+                               "explain a command without running it (no argument — from the clipboard)"))
     parser.add_argument("--library", nargs="?", const="status", choices=["status", "update"],
                         help=t("справка без интернета: что скачано (или update — скачать/обновить)",
                                "offline documentation: what is downloaded (or update — download/refresh)"))
@@ -754,6 +796,13 @@ def main(argv: list[str] | None = None) -> int:
             return app.theme(router.Intent("theme", text=args.color), args.color)
         if args.search_setup:
             return onboarding.search_step(cfg)
+        if args.check is not None:
+            text = args.check or clipboard()
+            if not args.check and text:
+                ui.say(name, ui.dim(t("из буфера обмена:", "from the clipboard:")))
+            if not text and sys.stdin.isatty():
+                text = input(t("  Вставь команду: ", "  Paste the command: ")).strip()
+            return app.check_command(text, query) if text else 1
         if args.library:
             return onboarding.library_step(cfg, ask=False) if args.library == "update" else onboarding.library_status(cfg)
         if args.news:
