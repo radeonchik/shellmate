@@ -687,6 +687,9 @@ def main(argv: list[str] | None = None) -> int:
                                "the assistant's color: a theme (classic, matrix, sunset…), #hex, or nothing for a menu"))
     parser.add_argument("--add-docs", metavar="PATH", help=t("добавить папку или файл в источники документов",
                                                              "add a folder or a file to the document sources"))
+    parser.add_argument("--library", nargs="?", const="status", choices=["status", "update"],
+                        help=t("справка без интернета: что скачано (или update — скачать/обновить)",
+                               "offline documentation: what is downloaded (or update — download/refresh)"))
     parser.add_argument("--search-setup", action="store_true", help=t("подключить поисковые API и проверить поиск", "connect search APIs and test the search"))
     parser.add_argument("--news", action="store_true", help=t("новости Arch и CachyOS с прошлого обновления", "Arch and CachyOS news since the last update"))
     parser.add_argument("--docs", action="store_true", help=t("показать папки-источники", "show the source folders"))
@@ -751,6 +754,8 @@ def main(argv: list[str] | None = None) -> int:
             return app.theme(router.Intent("theme", text=args.color), args.color)
         if args.search_setup:
             return onboarding.search_step(cfg)
+        if args.library:
+            return onboarding.library_step(cfg, ask=False) if args.library == "update" else onboarding.library_status(cfg)
         if args.news:
             return app.news(router.Intent("news"), "")
         if args.update:

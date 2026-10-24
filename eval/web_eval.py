@@ -56,6 +56,34 @@ CASES = [
     ("who won the 2018 FIFA World Cup", "fact", ["france", "франци"]),
 ]
 
+# --hard: "why/how" questions whose answer shares almost no words with the question
+HARD = [
+    ("почему листья осенью желтеют", "why", ["хлорофилл", "chlorophyll", "каротин", "carotenoid"]),
+    ("почему море солёное", "why", ["river", "реки", "рек ", "речн", "rock", "пород", "dissolved", "раствор", "minerals", "минерал"]),
+    ("почему Луна не падает на Землю", "why", ["orbit", "орбит", "velocity", "скорост", "inertia", "инерц"]),
+    ("отчего бывает гром", "why", ["lightning", "молни", "expan", "расшир", "shock wave", "ударн"]),
+    ("why does ice float on water", "why", ["density", "dense", "плотн"]),
+    ("как самолёт держится в воздухе", "explanation", ["lift", "подъёмн", "подъемн", "wing", "крыл"]),
+    ("почему зимой холоднее, чем летом", "why", ["tilt", "наклон", "axial", "angle", "угол"]),
+    ("откуда берётся радуга", "why", ["refract", "преломл", "dispersion", "дисперс", "droplet", "капл"]),
+    ("почему режут глаза, когда чистишь лук", "why", ["sulf", "сульф", "серы", "серн", "enzyme", "фермент", "propanethial", "lachrymatory", "слезоточ"]),
+    ("почему хлеб черствеет", "why", ["starch", "крахмал", "retrograd", "ретроград"]),
+]
+
+# --linux: how-to questions the favored wikis (or the offline library) answer
+LINUX = [
+    ("как почистить кэш пакетов pacman", "howto", ["paccache", "-sc"], ["disk"]),  # the cleanup offers it
+    ("как включить автологин в sddm", "howto", ["[autologin]", "user="]),
+    ("как поменять раскладку клавиатуры в hyprland", "howto", ["kb_layout"]),
+    ("как добавить папку в PATH в fish", "howto", ["fish_add_path", "set -u", "set -gx", "set -x"]),
+    ("как распаковать архив tar.gz", "howto", ["tar x", "tar -x", "xzf", "xvf", "xf "]),
+    ("как посмотреть логи службы sshd", "howto", ["journalctl -u", "--unit"], ["service"]),  # its status shows the log
+    ("как сделать swap-файл", "howto", ["mkswap", "swapon"]),
+    ("как сменить оболочку по умолчанию", "howto", ["chsh"]),
+    ("ошибка invalid or corrupted package (PGP signature)", "howto", ["archlinux-keyring", "pacman-key"], ["explain"]),  # errors.py knows it
+    ("как включить bluetooth", "howto", ["bluetooth.service", "bluetoothctl", "power on"], ["service"]),
+]
+
 
 def run_case(app: cli.App, q: str) -> dict:
     """The quotes the user would see (answers only), how the request was routed, which search answered."""
@@ -100,13 +128,15 @@ def main() -> None:
     ap.add_argument("-m", "--model", help="override the config's model")
     ap.add_argument("-k", action="append", default=[], help="only questions containing this (repeatable)")
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--hard", action="store_true", help="the hard why/how questions instead")
+    ap.add_argument("--linux", action="store_true", help="the Linux how-to questions instead")
     args = ap.parse_args()
     cfg = config.load(args.config)
     if args.model:
         cfg.model = args.model
     web.configure(cfg.search_order, cfg.tavily_key, cfg.brave_key, cfg.searx_url)
     app = cli.App(cfg, dry_run=True)
-    cases = [c for c in CASES if not args.k or any(k.lower() in c[0].lower() for k in args.k)]
+    cases = [c for c in (HARD if args.hard else LINUX if args.linux else CASES) if not args.k or any(k.lower() in c[0].lower() for k in args.k)]
     right = found_wrong = 0
     times = []
     for q, kind, keys, *also in cases:

@@ -2,8 +2,9 @@
 
 import getpass
 import shutil
+from datetime import datetime
 
-from shellmate import config, hardware, i18n, llm, persona, runner, ui, web
+from shellmate import config, docs, hardware, i18n, library, llm, persona, runner, ui, web
 from shellmate.i18n import t
 
 EXAMPLES_EN = [
@@ -83,6 +84,7 @@ def run(cfg: config.Config) -> None:
                           ui.dim(t("(имя, «босс», что угодно; Enter — никак)", "(a name, “boss”, anything; Enter — nothing)")) + " ")
     color_step(cfg)
     model_step(cfg)
+    library_step(cfg)
     path = config.save(cfg)
     print()
     ui.say(cfg.name, persona.phrase(cfg, "hello"))
@@ -166,6 +168,48 @@ def model_step(cfg: config.Config) -> None:
     cfg.model = pick.cand.tag
     ui.say(cfg.name, ui.green(t("модель: ", "model: ") + cfg.model))
     _offer_big_model(cfg, fits)
+
+
+def library_step(cfg: config.Config, ask: bool = True) -> int:
+    """Downloads the offline documentation: answers about Linux without the network, in milliseconds."""
+    sources = library.wanted(cfg.lang)
+    have = library.installed()
+    todo = [s for s in sources if s.id not in have]
+    if ask:
+        if not todo:
+            return 0
+        lines = [f"• {ui.bold(s.name)}  " + ui.dim(t(f"~{s.size_mb:.0f} МБ", f"~{s.size_mb:.0f} MB") if s.size_mb
+                                                   else t("уже есть на компьютере", "already on this computer"))
+                 for s in todo]
+        ui.panel(t("Справка без интернета", "Documentation without the internet"), [
+            t("Скачаю документацию, чтобы отвечать на вопросы о Linux за доли секунды и без сети:",
+              "I'll download documentation to answer Linux questions in a split second, without the network:"),
+            *lines, "",
+            ui.dim(t(f"на диске займёт ~{30 + sum(s.size_mb for s in todo) * 1.2:.0f} МБ · обновить: {cfg.name} --library update",
+                     f"takes ~{30 + sum(s.size_mb for s in todo) * 1.2:.0f} MB on disk · refresh: {cfg.name} --library update")),
+        ], "accent2", "◆")
+        if _prompt(t("Скачать? [Y/n] ", "Download? [Y/n] ")).lower() in ("n", "no", "н", "нет"):
+            return 0
+    with ui.working(t("скачиваю справку…", "downloading the documentation…")) as w:
+        results = library.update(todo if ask else sources, force=False,
+                                 progress=lambda m: w.update(t("скачиваю справку: ", "downloading the documentation: ") + m))
+    rows = [(r.source.name, ui.green("✓ " + r.message) if r.ok else ui.red("✗ " + r.message)) for r in results]
+    ui.kv(t("Справка", "Documentation"), rows + [(t("на диске", "on disk"), f"{library.size_mb():.0f} MB")],
+          "ok" if all(r.ok for r in results) else "warn", "§")
+    return 0 if all(r.ok for r in results) else 1
+
+
+def library_status(cfg: config.Config) -> int:
+    have = library.installed()
+    if not have:
+        ui.say(cfg.name, t(f"справка не скачана: {cfg.name} --library update", f"no documentation downloaded: {cfg.name} --library update"))
+        return 1
+    rows = [(r["name"], t(f"{r['pages']} стр. · ", f"{r['pages']} pages · ") +
+             datetime.fromtimestamp(r["fetched"]).strftime("%Y-%m-%d") + (f" · {r['version']}" if r["version"] else ""))
+            for r in have.values()]
+    ui.kv(t("Справка без интернета", "Offline documentation"),
+          rows + [(t("на диске", "on disk"), f"{library.size_mb():.0f} MB · {docs.short(str(library.db_path()))}")], "source", "§")
+    return 0
 
 
 def _offer_limits() -> None:

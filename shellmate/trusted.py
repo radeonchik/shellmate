@@ -17,7 +17,12 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
-from shellmate import rag, web
+from shellmate import library, library_sources, rag, web
+
+
+# a question with one of these is (also) about the shell: its manual is consulted
+SHELL_WORDS = ("shell", "оболочк", "alias", "алиас", "abbr", "prompt", "промпт", "path", "переменн", "variable",
+               "env", "function", "функци", "script", "скрипт", "completion", "автодополн", "history", "истори")
 
 
 @dataclass(frozen=True)
@@ -28,6 +33,7 @@ class Site:
     mediawiki: bool = False  # clean article HTML via action=render + API title search
     index: str = ""  # path of a Hextra full-text search index (no page fetching needed)
     wikipedia: bool = False  # full-text search + plain-text extracts through the Wikipedia API
+    offline_only: bool = False  # only in the offline library (library.py): never looked up online
 
 
 KNOWN = {
@@ -40,6 +46,12 @@ KNOWN = {
     "docs.fedoraproject.org": Site("Fedora Docs", "docs.fedoraproject.org"),
     # general knowledge: its own search beats web engines for facts, and costs no search credits
     "en.wikipedia.org": Site("Wikipedia", "en.wikipedia.org", wikipedia=True),
+    # offline library only (library.py): commands and the user's shell
+    library_sources.TLDR_DOMAIN: Site("tldr", library_sources.TLDR_DOMAIN, offline_only=True),
+    "www.gnu.org/software/bash": Site("Bash manual", "www.gnu.org/software/bash", ("bash",) + SHELL_WORDS, offline_only=True),
+    "fishshell.com": Site("fish manual", "fishshell.com", ("fish",) + SHELL_WORDS, offline_only=True),
+    "zsh.sourceforge.io": Site("zsh manual", "zsh.sourceforge.io", ("zsh",) + SHELL_WORDS, offline_only=True),
+    "www.debian.org": Site("Debian Reference", "www.debian.org", offline_only=True),
 }
 WIKIPEDIA = "en.wikipedia.org"
 # per distribution: its own docs first; ArchWiki is the best general Linux reference anywhere
@@ -56,9 +68,9 @@ UBUNTU_DOMAINS = ["documentation.ubuntu.com", "help.ubuntu.com", "wiki.debian.or
 def default_domains() -> list[str]:
     from shellmate import backends
     d = backends.distro()
-    if "ubuntu" in d.ids:
-        return UBUNTU_DOMAINS
-    return FAMILY_DOMAINS.get(d.family, ["wiki.archlinux.org", "wiki.hypr.land"])
+    base = UBUNTU_DOMAINS if "ubuntu" in d.ids else FAMILY_DOMAINS.get(d.family, ["wiki.archlinux.org", "wiki.hypr.land"])
+    # what only the offline library has: the user's shell manual, tldr, Debian Reference
+    return base + [k for k, s in KNOWN.items() if s.offline_only and library.has(k)]
 
 CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "shellmate" / "wikis"
 MAX_AGE = 3 * 86400
@@ -90,8 +102,17 @@ def sites_for(text: str, domains: list[str]) -> list[Site]:
 
 
 def is_trusted(url: str, domains: list[str]) -> bool:
-    host = urllib.parse.urlsplit(url).netloc.lower().removeprefix("www.")
-    return any(host == d or host.endswith("." + d) for d in domains)
+    """A domain may carry a path ("github.com/tldr-pages"): then the URL must start with it."""
+    parts = urllib.parse.urlsplit(url)
+    host = parts.netloc.lower().removeprefix("www.")
+    where = f"{host}{parts.path}"
+    for d in domains:
+        d = d.lower().removeprefix("www.")
+        if "/" in d and (where == d or where.startswith(d.rstrip("/") + "/")):
+            return True
+        if host == d or host.endswith("." + d):
+            return True
+    return False
 
 
 def keywords(query_en: str) -> list[str]:
@@ -298,6 +319,13 @@ def gather(question: str, query_en: str, domains: list[str], searx_url: str = ""
     fetch: list[tuple[str, Site]] = []
     leads: list[tuple[str, str]] = []
     for site in sites_for(query, domains):
+        if library.has(site.domain):  # downloaded: milliseconds, no network
+            items, t = library.search(site.domain, f"{query_en} {question}", pages=3)
+            if items:
+                per_site[site], titles = items, {**titles, **t}
+            continue
+        if site.offline_only:
+            continue
         if site.index:
             items, t = _index_chunks(site)
             per_site[site], titles = items, {**titles, **t}
