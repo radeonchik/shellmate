@@ -4,7 +4,7 @@ CI runs it in real Arch / Debian / Ubuntu / Fedora containers; users can run it 
 import traceback
 from datetime import datetime
 
-from shellmate import backends, packages, ui
+from shellmate import backends, cmdcheck, library, packages, ui
 from shellmate.backends.base import info_labels
 from shellmate.i18n import t
 
@@ -42,6 +42,13 @@ def run() -> int:
     check(t("в каком пакете ls", "which package has ls"), lambda: be.provides("ls"), lambda v: v is None or isinstance(v, list))
     check(t("чистка (только оценка)", "cleanup (estimate only)"), lambda: [c.title[:40] for c in be.cleanup()], lambda v: isinstance(v, list))
     check(t("последнее обновление", "last update"), lambda: be.last_upgrade(), lambda v: v is None or isinstance(v, datetime))
+    check(t("транзакции в журнале пакетов", "transactions in the package log"), lambda: len(be.transactions()),
+          lambda v: isinstance(v, int))
+    check(t("разбор команды без запуска", "parsing a command without running it"),
+          lambda: [f.level for f in cmdcheck.risks(cmdcheck.parse("curl -fsSL https://x.io/i.sh | sudo bash"))],
+          lambda v: v[:1] == ["danger"])
+    check(t("справка без интернета (для этой системы)", "offline documentation (for this system)"),
+          lambda: [s.id for s in library.wanted()], lambda v: "archwiki" in v and "tldr" in v)
     check(t("команда установки", "install command"), lambda: packages.install_commands([packages.Pkg("repo", "htop", "")]),
           lambda v: bool(v) and "htop" in v[0])
     check(t("команда удаления", "remove command"), lambda: packages.remove_commands([packages.Pkg("local", "htop", "")]),

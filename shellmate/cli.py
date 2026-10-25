@@ -681,7 +681,8 @@ def install_shell(name: str) -> int:
     hook.write_text(FISH_HOOK.format(name=name))
     check = base / "fish" / "conf.d" / f"{name}-check.fish"
     check.parent.mkdir(parents=True, exist_ok=True)
-    check.write_text(FISH_CHECK.format(name=name, fn=re.sub(r"\W", "_", name)))
+    fn = re.sub(r"\W", "_", name)
+    check.write_text(FISH_CHECK.format(name=name, fn=fn))
     ui.panel(t("Готово: fish будет спрашивать меня о ненайденных командах", "Done: fish will ask me about commands it can't find"), [
         t(f"файл: {docs.short(str(hook))} — удали его, чтобы вернуть как было",
           f"file: {docs.short(str(hook))} — delete it to get the old behavior back"),
@@ -693,8 +694,8 @@ def install_shell(name: str) -> int:
         ui.dim(f'  command_not_found_handle()  {{ {name} --not-found "$1"; return 127; }}   # bash'),
         ui.dim(f'  command_not_found_handler() {{ {name} --not-found "$1"; return 127; }}   # zsh'),
         ui.dim(f"""  bind -x '"\\ee": {name} --check "$READLINE_LINE"'   # bash: Alt+E"""),
-        ui.dim(f"""  _{re.sub(r"\W", "_", name)}_check() {{ echo; {name} --check "$BUFFER"; zle reset-prompt; }}; """
-               f"""zle -N _{re.sub(r"\W", "_", name)}_check; bindkey '\\ee' _{re.sub(r"\W", "_", name)}_check   # zsh: Alt+E"""),
+        ui.dim(f"  _{fn}_check() {{ echo; {name} --check \"$BUFFER\"; zle reset-prompt; }}; "
+               f"zle -N _{fn}_check; bindkey '\\ee' _{fn}_check   # zsh: Alt+E"),
     ], "ok", "✓")
     return 0
 

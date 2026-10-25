@@ -11,7 +11,7 @@ from shellmate.i18n import t
 
 INTENTS = ["install", "remove", "search", "update", "downgrade", "disk", "bigfiles", "health",
            "service", "processes", "pkginfo", "sysinfo", "network", "web", "docs", "explain",
-           "theme", "news", "undo", "history", "translate", "files", "chat", "unknown"]
+           "theme", "news", "undo", "history", "translate", "files", "afterupdate", "game", "chat", "unknown"]
 ACTIONS = ["", "status", "start", "stop", "restart", "enable", "disable", "kill", "add", "remove"]
 
 SCHEMA = {
@@ -33,13 +33,16 @@ intent:
 - remove: user wants to uninstall a program.
 - search: user wants to find or browse programs, or asks whether something exists.
 - update: update / upgrade the system or all packages.
-- downgrade: go back to an older version of a PACKAGE ("откати firefox", "верни старую версию
-  mesa"), or roll back after a bad update.
+- downgrade: go back to an older version of a NAMED package ("откати firefox", "верни старую версию
+  mesa").
+- afterupdate: something stopped working or broke after an update and the user wants to know what
+  changed or why (no package named, or asking what the update did).
 - disk: free disk space, how full the disk is, or cleaning up the system / freeing space.
 - bigfiles: which files or folders take the most space, largest files in some folder.
 - files: what is in a folder — how many files, which kinds or types of files, list what lies there
   (not what the files say, not how big they are).
-- health: what is broken, errors in the system log, failed services, general "check my system".
+- health: what is broken, errors in the system log, failed services, general "check my system" (the log
+  of ONE named service is service/status).
 - service: status / start / stop / restart / enable / disable of a system service, or why a
   specific subsystem (sound, wifi, bluetooth, printer...) does not work.
 - processes: what is slowing the computer down, what uses CPU or RAM, kill / close a program.
@@ -58,11 +61,14 @@ intent:
   schedule, plans, lists, recipes, anything "my …" that only their files can know ("что у меня
   записано на завтра", "what's on my shopping list"); or adds or removes a folder or file as a
   source of documents.
-- explain: user asks what an error message, command or Linux term means, or why something failed.
+- explain: user asks what an error message, command or Linux term means, why something failed, or
+  what a shell command does / whether it is safe to run it.
 - theme: change the assistant's own color / look in the terminal.
 - news: news of the user's Linux distribution itself (announcements, updates needing manual intervention).
 - undo: undo / revert what the ASSISTANT did last, no package named ("отмени", "верни как было").
 - history: what the assistant has done recently.
+- game: whether a game runs on Linux / on this computer, or whether the computer is ready for games
+  (drivers, Steam, Proton).
 - translate: translate a word, phrase or text into another language ("переведи на английский…",
   "как будет «кошка» по-немецки").
 - chat: greetings, thanks, small talk, or questions about the assistant itself.
@@ -85,7 +91,11 @@ text:
 - docs: short English keywords of what the user asks about their documents, keeping the asked day,
   name or thing ("что я записал про отпуск" -> "vacation notes"), or the folder / file path when
   adding/removing.
-- explain: the error or term, copied verbatim.
+- explain: the error, term or command, copied verbatim.
+- afterupdate: what stopped working, as one English word if it is one of: sound, graphics, network,
+  bluetooth, boot, desktop; else "".
+- game: the game's official title (in English when the user wrote a translation or a nickname); "" when
+  asking whether the computer is ready for games in general.
 - translate: the text to translate, copied verbatim (without "переведи…").
 - theme: the color the user wants, as they said it (or a #hex), else "".
 - otherwise "".
@@ -99,7 +109,8 @@ Earlier turns of the conversation may be included: use them to resolve follow-up
 
 The request may be in any language and may contain typos and slang. Russian tech slang:
 раст = Rust, питон = Python, джава = Java, плюсы = C++, шарп = C#, гоу = Go, убунта/убунту = Ubuntu,
-винда = Windows, линь/линух = Linux, видюха = GPU, проц = CPU, оператива = RAM, прога = program."""
+винда = Windows, линь/линух = Linux, видюха = GPU, проц = CPU, оператива = RAM, прога = program,
+оболочка = shell (bash/fish/zsh, not a terminal emulator)."""
 
 
 def _ex(intent: str, packages: list[str] | None = None, text: str = "", action: str = "") -> dict:
@@ -144,6 +155,13 @@ EXAMPLES = [
     ("добавь папку ~/Documents в источники", _ex("docs", text="~/Documents", action="add")),
     ("что у меня в заметках про настройку роутера", _ex("docs", text="router setup notes")),
     ("check my shopping list, do I need milk", _ex("docs", text="shopping list milk")),
+    ("после обновления пропал звук", _ex("afterupdate", text="sound")),
+    ("что сломалось после апдейта?", _ex("afterupdate")),
+    ("пойдёт ли у меня ведьмак 3", _ex("game", text="The Witcher 3")),
+    ("готов ли комп к играм", _ex("game")),
+    ("покажи логи службы cups", _ex("service", text="cups", action="status")),
+    ("что делает команда tar -xzf backup.tar.gz -C /tmp", _ex("explain", text="tar -xzf backup.tar.gz -C /tmp")),
+    ("что такое initramfs", _ex("explain", text="initramfs")),
     ("что значит error: failed to commit transaction (conflicting files)",
      _ex("explain", text="error: failed to commit transaction (conflicting files)")),
     ("перекрась себя в зелёный", _ex("theme", text="зелёный")),

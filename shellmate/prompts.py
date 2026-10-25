@@ -50,6 +50,7 @@ You cannot run arbitrary commands or do anything not on this list."""
 
 CAPABILITIES_RU = """  установить, удалить и найти программу ({sources})
   обновить систему (со снимком btrfs, если он настроен) и откатить пакет на старую версию
+  найти, что сломалось после обновления, и откатить виновника
   показать место на диске, почистить мусор, найти самые большие файлы, сказать, что лежит в папке
   проверить систему: упавшие сервисы и ошибки в журнале
   управлять сервисами (звук, блютуз, wi-fi…): статус, перезапуск, автозапуск
@@ -60,10 +61,13 @@ CAPABILITIES_RU = """  установить, удалить и найти про
   найти ответ в интернете
   отвечать по твоим документам (добавь папку: «{name} добавь ~/Documents в источники»)
   объяснить ошибку (можно так: команда 2>&1 | {name} explain)
+  объяснить команду, не запуская её, и предупредить об опасном ({name} --check, в fish — Alt+E)
+  сказать, пойдёт ли игра на этом железе (ProtonDB, Steam Deck, античит) и готов ли компьютер к играм
   перевести текст (можно и файл: cat файл | {name} переведи на английский)"""
 
 CAPABILITIES_EN = """  install, remove and find programs ({sources})
   update the system (with a btrfs snapshot if set up) and roll a package back to an older version
+  find what broke after an update, and roll the culprit back
   show disk space, clean up junk, find the biggest files, tell what is in a folder
   check the system: failed services and errors in the journal
   manage services (sound, bluetooth, wi-fi…): status, restart, autostart
@@ -74,6 +78,8 @@ CAPABILITIES_EN = """  install, remove and find programs ({sources})
   find an answer on the web
   answer from your documents (add a folder: “{name} add ~/Documents to sources”)
   explain an error (like this: command 2>&1 | {name} explain)
+  explain a command without running it and warn about anything dangerous ({name} --check, in fish — Alt+E)
+  tell whether a game runs on this hardware (ProtonDB, Steam Deck, anti-cheat) and whether the computer is ready for games
   translate a text (a file too: cat file | {name} translate to Russian)"""
 
 

@@ -29,8 +29,9 @@ PACMAN_LINE = re.compile(r"^\[([^\]]+)\] \[ALPM\] (upgraded|downgraded|installed
 
 
 def _when(stamp: str) -> datetime | None:
+    stamp = re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", stamp.replace("Z", "+00:00").replace(" ", "T"))  # Python 3.10: "+03:00"
     try:  # 2026-10-20T11:33:32+0300, or the old "2019-03-01 10:00" format
-        return datetime.fromisoformat(stamp.replace("Z", "+00:00").replace(" ", "T")).astimezone()
+        return datetime.fromisoformat(stamp).astimezone()
     except ValueError:
         return None
 

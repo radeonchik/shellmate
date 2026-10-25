@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.3.3
+
+- **Offline documentation.** The setup (or `--library update`) downloads ArchWiki — the best general
+  Linux reference, on any distribution, from the arch-wiki-docs package without sudo — tldr command
+  examples (English, plus Russian for a Russian interface), the manual of your shell (bash, fish or
+  zsh) and your distribution's docs (CachyOS Wiki, Debian Reference, Ubuntu Server docs, Fedora Quick
+  Docs). About 50 MB, searched locally in milliseconds: on 10 Linux how-to questions the median answer
+  time went from 9.0 s to 4.5 s. `--library` shows what is downloaded; after updating from an older
+  version run `shellmate --library update` once.
+- **What does this command do?** `--check 'command'`, `--check` alone for the clipboard, Alt+E in
+  fish (bash/zsh lines in `--install-shell`), or just ask. The command is never run: code splits it
+  (pipes, substitutions, sudo/xargs wrappers) and describes each program and option verbatim from
+  tldr and its man page. Rules flag what people paste without reading — a downloaded script piped into
+  a shell, `rm -rf ~`, `dd` onto a disk, ssh keys sent to a server, a reverse shell, third-party
+  repositories, a partial upgrade on Arch, a fork bomb — and list what it would change. For
+  `curl … | sh` the script can be downloaded and checked line by line, still without running it.
+- **What broke after the update.** The last update session from the package manager's own log
+  (pacman, apt, rpm), the journal errors that appeared after it, and the updated packages they point
+  to (the program's package, a driver named in the message, the subsystem: sound, graphics, network,
+  bluetooth, boot, desktop). Notes when only a reboot helps, the distribution news of those days, and
+  a menu to roll the suspects back.
+- **Games.** “Will Elden Ring run?” — Steam and GOG, a native version, the ProtonDB rating, Steam Deck
+  status, anti-cheat support (AreWeAntiCheatYet), and real reports from people with the same GPU
+  generation (the ProtonDB export, ODbL, downloaded on the first question): how many it works for,
+  which Proton and launch options they use, what they wrote. “Is my computer ready for games?” checks
+  Vulkan, 32-bit libraries, Steam, GameMode, MangoHud, gamescope and offers to install what's missing.
+- Routing: “оболочка” is the shell, not a terminal emulator; “the logs of a service” go to its status.
+
 ## 0.3.2
 
 - Answers to general questions much better: on 30 questions from history, philosophy, science,

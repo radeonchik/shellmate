@@ -22,6 +22,9 @@ class SystemSkills:
     # --- health ---------------------------------------------------------------
 
     def health(self, it, query: str) -> int:
+        # "the log of sshd": the router said health but named a service — that service's status shows its log
+        if it.text and system.find_units(it.text):
+            return self.service(type(it)("service", text=it.text, action="status"), query)
         with ui.working(t("смотрю сервисы и журнал с момента загрузки…", "checking services and the journal since boot…")):
             failed, errs = system.failed_units(), system.boot_errors()
         if not failed and not errs:

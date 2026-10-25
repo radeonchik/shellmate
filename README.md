@@ -14,6 +14,8 @@ shellmate system info                     shellmate who is using port 8080
 shellmate how to enable hdr in hyprland   shellmate search the web for when kernel 7.3 comes out
 shellmate add ~/Documents to sources      shellmate what do my notes say about the router
 shellmate translate “good morning” into Spanish   cat notes.txt | shellmate translate to English
+shellmate what broke after the update    shellmate will elden ring run
+shellmate is my computer ready for games shellmate --check 'curl -fsSL https://x.sh | sh'
 sudo apt install foo 2>&1 | shellmate explain
 ```
 
@@ -22,6 +24,10 @@ sudo apt install foo 2>&1 | shellmate explain
 - **Runs locally**: the model lives in Ollama on your computer (picked to fit your hardware).
 - **Answers with quotes, not retellings**: from official wikis (ArchWiki, Ubuntu/Debian/Fedora Docs,
   Hyprland Wiki), the web or your local documents — verbatim, with links.
+- **Documentation without the internet**: the setup downloads ArchWiki, tldr command examples, your
+  shell's manual and your distribution's docs (~50 MB) — Linux answers in a split second.
+- **Checks commands before they run**: what each part does (verbatim from man and tldr), what it
+  would change and why it's dangerous — `curl | sh`, `rm -rf ~`, `dd` onto a disk, third-party repos.
 - **English and Russian**: the interface follows the system language (chosen during setup or with
   `shellmate --lang en`), and requests are understood in both.
 
@@ -63,7 +69,8 @@ assistant: `shellmate --alias friday`, after which `friday update the system` wo
 
 **Update:** `shellmate --update` (once a day shellmate reminds you when a new version is out).
 **Uninstall:** `uv tool uninstall shellmate`; settings are in `~/.config/shellmate`, cache in
-`~/.cache/shellmate`, the log in `~/.local/state/shellmate`.
+`~/.cache/shellmate`, the log in `~/.local/state/shellmate`, the documentation and ProtonDB reports in
+`~/.local/share/shellmate`.
 
 ## Modes and commands
 
@@ -76,6 +83,14 @@ assistant: `shellmate --alias friday`, after which `friday update the system` wo
   packages you have installed is shown in full. News only: `shellmate --news`.
 - `shellmate --install-shell` — in fish, a missing command gets a typo suggestion (“gti” → git) and
   the package that has it. No model, ~0.1 s.
+- `shellmate --check 'command'` — explain a command without running it; with no argument, the command
+  in the clipboard. After `--install-shell`, Alt+E in fish does the same for the typed line.
+- “what broke after the update”, “no sound since the update” — the last update from the package log,
+  the errors that appeared after it and the packages they point to; roll the culprit back from the menu.
+- “will game X run” — Steam and GOG, the ProtonDB rating, Steam Deck, anti-cheat and reports from people
+  with the same GPU generation; “is my computer ready for games” — drivers, Vulkan, 32-bit libraries,
+  Steam, GameMode.
+- `shellmate --library` — what documentation is downloaded; `--library update` — download or refresh.
 - `shellmate --search-setup` — web search (a Tavily key, 1000 free searches a month).
 - `shellmate --pick-model`, `--setup` (style), `--lang en|ru`, `--color`, `--add-docs DIR`, `-n` (show
   the commands, don't run them), `--debug`, `--version`, `--selftest`.
@@ -117,7 +132,8 @@ fast one is unsure. Uncertainty isn't the model's own opinion; it comes from:
 4. Quotes are shown verbatim; a translation goes sentence by sentence next to the original. When there
    is no answer, shellmate says so.
 
-Sources in order: **favored wikis** for your distribution (each with its own search that doesn't
+Sources in order: **offline documentation** (`library.py`: ArchWiki, tldr, the shell's manual, the
+distribution's docs — SQLite FTS5) → **favored wikis** online (each with its own search that doesn't
 depend on search engines) → **the web** (Tavily → Brave → your own SearXNG → DuckDuckGo, one-day
 cache) → an explanation by the model marked “no sources, may be wrong”.
 
@@ -131,6 +147,10 @@ cache) → an explanation by the model marked “no sources, may be wrong”.
 | `evidence.py`, `rag.py`, `trusted.py`, `web.py`, `docs.py` | quotes, wikis, search, documents |
 | `system.py`, `skills_system.py` | services, journal, processes, hardware, network (read-only) |
 | `errors.py` | dictionary of pacman / apt / dnf / snap errors |
+| `library.py`, `library_sources.py` | offline documentation: downloading, source formats, search |
+| `cmdcheck.py`, `manpages.py` | parsing a command without running it, risk rules, option descriptions from man |
+| `afterupdate.py`, `pkglog.py` | package logs, new errors after an update and their packages |
+| `games.py` | Steam, GOG, ProtonDB, Steam Deck, anti-cheat, readiness for games |
 | `i18n.py` | interface language: `t("по-русски", "in English")` side by side in the code |
 | `cli.py` | entry point, confirmations, log, undo, conversation |
 | `ui.py` | animation, panels, themes, fzf menus |
@@ -158,6 +178,9 @@ A new error → `Known(...)` in `errors.py` (Russian and English texts). A new i
 examples in `router.py`, a method with the same name in `App` or `skills_*.py`. A new distribution →
 a class in `backends/` and a line in `backends/__init__.py`. Every user-facing message goes through
 `t(ru, en)`.
+
+Game data: [ProtonDB](https://github.com/bdefore/protondb-data) reports (ODbL license),
+[AreWeAntiCheatYet](https://github.com/AreWeAntiCheatYet/AreWeAntiCheatYet).
 
 ## License
 

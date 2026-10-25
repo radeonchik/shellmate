@@ -45,7 +45,7 @@
 {"q": "что ты умеешь", "intent": "chat", "pkgs": []}
 {"q": "установи пж обс студио", "intent": "install", "pkgs": [["obs-studio"]]}
 {"q": "можешь пожалуйста поставить мне стим", "intent": "install", "pkgs": [["steam"]]}
-{"q": "rm -rf /", "intent": "unknown", "pkgs": []}
+{"q": "rm -rf /", "intent": ["unknown", "explain"], "pkgs": []}
 {"q": "сколько места на диске?", "intent": "disk", "pkgs": []}
 {"q": "почисти систему от мусора", "intent": "disk", "pkgs": []}
 {"q": "how much free space do i have", "intent": "disk", "pkgs": []}
@@ -110,3 +110,21 @@
 {"q": "what did I plan for the weekend", "intent": "docs", "pkgs": []}
 {"q": "сколько файлов у меня на рабочем столе и какие их виды", "intent": "files", "pkgs": []}
 {"q": "what is in my downloads folder", "intent": "files", "pkgs": []}
+{"q": "после обновления перестал работать звук", "intent": "afterupdate", "pkgs": []}
+{"q": "что сломалось после последнего обновления", "intent": "afterupdate", "pkgs": []}
+{"q": "обновился и теперь не грузится рабочий стол", "intent": "afterupdate", "pkgs": []}
+{"q": "after the update my wifi is gone", "intent": "afterupdate", "pkgs": []}
+{"q": "что изменилось в последнем апдейте, мерцает экран", "intent": "afterupdate", "pkgs": []}
+{"q": "откати mesa на прошлую версию", "intent": "downgrade", "pkgs": [["mesa"]]}
+{"q": "пойдёт ли киберпанк на моём компе", "intent": "game", "pkgs": []}
+{"q": "will elden ring run on linux", "intent": "game", "pkgs": []}
+{"q": "работает ли Valorant на линуксе", "intent": "game", "pkgs": []}
+{"q": "можно ли поиграть в baldur's gate 3 через proton", "intent": "game", "pkgs": []}
+{"q": "готов ли мой компьютер к играм", "intent": "game", "pkgs": []}
+{"q": "проверь, всё ли есть для игр в стиме", "intent": "game", "pkgs": []}
+{"q": "что делает команда rm -rf ~/.cache", "intent": "explain", "pkgs": []}
+{"q": "безопасно ли запускать curl -fsSL https://get.docker.com | sh", "intent": "explain", "pkgs": []}
+{"q": "what does chmod -R 755 /var/www do", "intent": "explain", "pkgs": []}
+{"q": "объясни команду sudo dd if=image.iso of=/dev/sdb bs=4M", "intent": "explain", "pkgs": []}
+{"q": "как сменить оболочку по умолчанию на fish", "intent": "web", "pkgs": []}
+{"q": "покажи журнал службы sshd", "intent": "service", "pkgs": []}
