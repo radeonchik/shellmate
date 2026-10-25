@@ -1,12 +1,16 @@
-"""Intent handlers for tools: explaining a command before it runs, what broke after an update.
+"""Intent handlers for tools: explaining a command before it runs, what broke after an update,
+whether a game runs here.
 Mixed into cli.App, so `self` has say/phrase/execute/cfg/_translate."""
 
 import shutil
 import sys
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
+from pathlib import Path
 
-from shellmate import afterupdate, cmdcheck, library, manpages, news, packages, router, ui, web
+from shellmate import afterupdate, backends, cmdcheck, games, library, manpages, news, packages, router, system, ui, web
+from shellmate.packages import Pkg, run_quiet
 from shellmate.i18n import plural, t
 from shellmate.prompts import lang_of, ui_language
 
@@ -197,6 +201,161 @@ class ToolSkills:
         e = report.errors[i].error
         return self.explain_text(f"{e.source}: {e.message}", "")
 
+    # --- games ----------------------------------------------------------------------------------
+
+    def game(self, it, query: str) -> int:
+        name = (it.text or "").strip()
+        if not name:
+            return self.game_ready()
+        with ui.working(t(f"ищу «{name}» в Steam и GOG…", f"looking for “{name}” on Steam and GOG…")), ThreadPoolExecutor(2) as ex:
+            steam, gog = ex.submit(games.steam_search, name), ex.submit(games.gog_search, name)
+            found = steam.result() + gog.result()
+        if not found:
+            self.say(ui.yellow(t(f"не нашёл «{name}» ни в Steam, ни в GOG", f"couldn't find “{name}” on Steam or GOG")))
+            return 1
+        exact = [g for g in found if games.same_name(g.name, name)]
+        # the same game in both stores: Steam's has the ProtonDB data
+        exact_steam = [g for g in exact if g.store == "steam"]
+        if len(exact_steam) == 1 or len(exact) == 1:
+            game = (exact_steam or exact)[0]
+        elif len(found) == 1:
+            game = found[0]
+        else:
+            i = ui.choose([f"{g.name}  {ui.dim(g.store.upper())}" + (ui.dim(" · Linux") if g.linux else "") for g in found],
+                          t("какая игра >", "which game >"))
+            if i is None:
+                return 1
+            game = found[i]
+        return self._game_report(game)
+
+    def _game_report(self, game: games.Game) -> int:
+        appid = game.id if game.store == "steam" else ""
+        twin = None
+        if game.store == "gog":  # Proton reports are about the Steam version of the same game
+            twin = next((g for g in games.steam_search(game.name, 3) if games.same_name(g.name, game.name)), None)
+            appid = twin.id if twin else ""
+        with ui.working(t("смотрю ProtonDB, Steam Deck и античит…", "checking ProtonDB, Steam Deck and anti-cheat…")), ThreadPoolExecutor(4) as ex:
+            summary = ex.submit(games.protondb_summary, appid) if appid else None
+            deck = ex.submit(games.deck_status, appid) if appid else None
+            cheat = ex.submit(games.anticheat, appid, game.name)
+            lutris = ex.submit(games.lutris_slug, game.name) if game.store == "gog" else None
+            summary, deck, cheat = summary.result() if summary else None, deck.result() if deck else "", cheat.result()
+            lutris = lutris.result() if lutris else ""
+        tier_ru = {"platinum": "платина — работает идеально", "gold": "золото — работает после мелкой настройки",
+                   "silver": "серебро — работает с проблемами", "bronze": "бронза — запускается, но играть тяжело",
+                   "borked": "не работает", "pending": "мало отчётов", "native": "нативная версия"}
+        tier_en = {"platinum": "platinum — works perfectly", "gold": "gold — works after minor tweaks", "silver": "silver — works with issues",
+                   "bronze": "bronze — starts, but hard to play", "borked": "doesn't work", "pending": "too few reports", "native": "native"}
+        lines = []
+        native = game.linux or (twin.linux if twin else False)
+        lines.append((t("Linux", "Linux"), ui.green(t("есть нативная версия", "has a native version")) if native else
+                      t("только Windows — запускается через Proton", "Windows only — runs through Proton")))
+        tier = (summary or {}).get("tier", "")
+        if tier:
+            color = ui.green if games.TIERS.get(tier, 0) >= 4 else ui.yellow if games.TIERS.get(tier, 0) >= 2 else ui.red
+            trend = (summary or {}).get("trendingTier", "")
+            short = {"platinum": t("платина", "platinum"), "gold": t("золото", "gold"), "silver": t("серебро", "silver"),
+                     "bronze": t("бронза", "bronze"), "borked": t("не работает", "borked")}
+            lines.append(("ProtonDB", color(t(tier_ru.get(tier, tier), tier_en.get(tier, tier))) + ui.dim(
+                " · " + plural(int(summary.get("total") or 0), ("отчёт", "отчёта", "отчётов"), ("report", "reports")) +
+                (t(f" · сейчас: {short.get(trend, trend)}", f" · lately: {short.get(trend, trend)}") if trend and trend != tier else ""))))
+        elif appid:
+            lines.append(("ProtonDB", ui.dim(t("отчётов нет", "no reports"))))
+        if deck:
+            label = {"verified": (ui.green, t("проверена", "verified")), "playable": (ui.yellow, t("играбельна", "playable")),
+                     "unsupported": (ui.red, t("не поддерживается", "unsupported"))}[deck]
+            lines.append(("Steam Deck", label[0](label[1])))
+        if cheat:
+            meaning = {"Supported": (ui.green, t("поддерживает Linux — онлайн работает", "supports Linux — online works")),
+                       "Running": (ui.green, t("работает", "works")),
+                       "Planned": (ui.yellow, t("поддержку Linux обещают", "Linux support is planned")),
+                       "Broken": (ui.red, t("не работает на Linux — онлайн недоступен", "broken on Linux — no online play")),
+                       "Denied": (ui.red, t("разработчики запретили Linux — онлайн недоступен", "the developers block Linux — no online play"))}
+            color, text = meaning.get(cheat.status, (ui.dim, cheat.status))
+            lines.append((t("Античит", "Anti-cheat"), color(text) + ui.dim(f" · {', '.join(cheat.anticheats)}" if cheat.anticheats else "")))
+        if game.store == "gog":
+            lines.append(("GOG", t("ставь через Heroic Games Launcher", "install it with the Heroic Games Launcher") +
+                          (ui.dim(f" · Lutris: lutris.net/games/{lutris}/") if lutris else "")))
+            if not twin:
+                lines.append(("", ui.dim(t("в Steam такой игры нет — отчётов ProtonDB нет", "not on Steam — no ProtonDB reports"))))
+        links = [game.url] + ([f"https://www.protondb.com/app/{appid}"] if appid else [])
+        ui.kv(f"{game.name} · {game.store.upper()}", lines + [("", ui.dim("  ".join(ui.link(u, u) for u in links if u)))], "accent", "🎮")
+        if appid and not native:
+            self._game_similar(appid)
+        return 0
+
+    def _game_similar(self, appid: str) -> None:
+        """Real reports from people with the same GPU generation (the ProtonDB export, downloaded once)."""
+        mine = _my_gpu_class()
+        if not games.dump_info():
+            if not (sys.stdin.isatty() and self.ask_yes(t(
+                    "Скачать отчёты пользователей ProtonDB (~72 МБ), чтобы сравнить с твоим железом?",
+                    "Download the ProtonDB user reports (~72 MB) to compare with your hardware?"))):
+                return
+            with ui.working(t("скачиваю отчёты ProtonDB…", "downloading the ProtonDB reports…")) as w:
+                try:
+                    games.update_dump(lambda m: w.update(m))
+                except (games.src.SourceError, OSError) as e:
+                    ui.problem(t(f"не удалось: {e}", f"that failed: {e}"))
+                    return
+        sim = games.similar(appid, mine)
+        if not sim:
+            self.say(ui.dim(t("отчётов с похожей видеокартой нет", "no reports with a similar GPU")))
+            return
+        share = sim.works / sim.total
+        color = ui.green if share >= 0.8 else ui.yellow if share >= 0.5 else ui.red
+        lines = [color(t(f"работает у {sim.works} из {sim.total} ({share:.0%})", f"works for {sim.works} of {sim.total} ({share:.0%})")) +
+                 ui.dim(t(f" · за последний год: {sim.recent}", f" · in the last year: {sim.recent}"))]
+        proton = [(p, n) for p, n in sim.proton if n > 1]
+        if proton:
+            lines.append(t("чаще всего с: ", "most often with: ") + ", ".join(f"{p} ({n})" for p, n in proton))
+        for opts, n in sim.launch:
+            lines.append(t("параметры запуска: ", "launch options: ") + ui.bold(opts) + ui.dim(f" ×{n}"))
+        notes = [n for _, _, n in sim.notes[:2]]
+        shown = notes
+        if notes and ui_language() in ("Russian", "Ukrainian"):
+            with ui.working(t("перевожу отзывы…", "translating the reports…")):
+                shown = [" ".join(x.split()) for x in self._translate(notes, ui_language()) or notes]
+        for (date, gpu, original), text in zip(sim.notes, shown):
+            lines += ["", ui.dim(f"{date} · {gpu}"), f"«{text}»"]
+            if text != original:
+                lines.append(ui.dim(ui.italic(original)))
+        dump = games.dump_info()
+        lines += ["", ui.dim(t(f"данные: ProtonDB ({dump[0] if dump else ''}, лицензия ODbL)", f"data: ProtonDB ({dump[0] if dump else ''}, ODbL license)"))]
+        ui.panel(t(f"На похожем железе ({sim.label})", f"On similar hardware ({sim.label})"), lines, "quote", "❝")
+
+    def game_ready(self) -> int:
+        d = backends.distro()
+        flatpaks = set(run_quiet(["flatpak", "list", "--app", "--columns=application"]).split()) if shutil.which("flatpak") else set()
+        foreign = run_quiet(["dpkg", "--print-foreign-architectures"]) if d.family == "debian" else ""
+        try:
+            max_map = int(Path("/proc/sys/vm/max_map_count").read_text())
+        except (OSError, ValueError):
+            max_map = 0
+        have = lambda what: bool(packages.installed_version(what[4:])) if what.startswith("pkg:") else bool(shutil.which(what))  # noqa: E731
+        with ui.working(t("проверяю драйверы, Vulkan и игровые программы…", "checking drivers, Vulkan and gaming tools…")):
+            checks = games.readiness(d.family, _gpu_names(), have, flatpaks, foreign_arch=foreign, max_map=max_map)
+        lines = []
+        for c in checks:
+            mark = ui.green("✓") if c.ok else (ui.dim("○") if c.optional else ui.red("✗"))
+            lines.append(f"{mark} {c.what}")
+            if not c.ok and c.hint:
+                lines.append(ui.dim(f"    {c.hint}"))
+        ui.panel(t("Готовность к играм", "Ready for games"), lines, "accent", "🎮")
+        needed = [p for c in checks if not c.ok and not c.optional for p in c.fix]
+        extra = [p for c in checks if not c.ok and c.optional for p in c.fix]
+        if not needed and not extra:
+            self.say(ui.green(t("для игр всё на месте", "everything for games is in place")))
+            return 0
+        if "cachyos" in d.ids and len(needed) + len(extra) >= 3 and not packages.installed_version("cachyos-gaming-meta"):
+            self.say(ui.dim(t("на CachyOS всё нужное ставит один пакет: cachyos-gaming-meta", "on CachyOS one package installs everything: cachyos-gaming-meta")))
+        want = needed or extra
+        if not sys.stdin.isatty() or not self.ask_yes(t(f"Поставить {', '.join(want)}?", f"Install {', '.join(want)}?")):
+            return 0
+        pkgs = [Pkg("repo", n, "") for n in want]
+        return self.execute(packages.install_commands(pkgs), t("для игр: ", "for games: ") + ", ".join(want),
+                            {"kind": "remove", **self._by_kind(pkgs)})
+
     def script_report(self, url: str) -> int:
         """What a downloaded install script would do, line by line, without running any of it."""
         with ui.working(t("скачиваю скрипт (не запускаю)…", "downloading the script (not running it)…")):
@@ -247,6 +406,16 @@ def ago(when: datetime) -> str:
     if d < timedelta(days=1):
         return plural(int(d.total_seconds() // 3600), ("час", "часа", "часов"), ("hour", "hours")) + t(" назад", " ago")
     return plural(d.days, ("день", "дня", "дней"), ("day", "days")) + t(" назад", " ago")
+
+
+def _gpu_names() -> list[str]:
+    return [g.split(" · ")[0] for g in system.gpus()]
+
+
+def _my_gpu_class() -> str:
+    """The GPU games run on: the discrete one when there are two."""
+    classes = [games.gpu_class(g) for g in _gpu_names()]
+    return next((c for c in classes if c and "igpu" not in c), next((c for c in classes if c), ""))
 
 
 def _unique(cmds: list[cmdcheck.Simple]) -> list[cmdcheck.Simple]:
