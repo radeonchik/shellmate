@@ -11,7 +11,8 @@ from shellmate.i18n import t
 
 INTENTS = ["install", "remove", "search", "update", "downgrade", "disk", "bigfiles", "health",
            "service", "processes", "pkginfo", "sysinfo", "network", "web", "docs", "explain",
-           "theme", "news", "undo", "history", "translate", "files", "afterupdate", "game", "chat", "unknown"]
+           "theme", "news", "undo", "history", "translate", "files", "afterupdate", "game", "convert", "schedule",
+           "chat", "unknown"]
 ACTIONS = ["", "status", "start", "stop", "restart", "enable", "disable", "kill", "add", "remove"]
 
 SCHEMA = {
@@ -45,7 +46,8 @@ intent:
   of ONE named service is service/status).
 - service: status / start / stop / restart / enable / disable of a system service, or why a
   specific subsystem (sound, wifi, bluetooth, printer...) does not work.
-- processes: what is slowing the computer down, what uses CPU or RAM, kill / close a program.
+- processes: why the computer is slow, hot or loud, what drains the battery, what uses CPU or RAM,
+  kill / close a program.
 - pkginfo: which package provides a command or file, or details about an installed package.
 - sysinfo: hardware and system overview: kernel, CPU, GPU, driver, RAM, temperature, battery.
 - network: the internet connection of THIS computer: is it working, IP address, Wi-Fi, DNS,
@@ -65,10 +67,15 @@ intent:
   what a shell command does / whether it is safe to run it.
 - theme: change the assistant's own color / look in the terminal.
 - news: news of the user's Linux distribution itself (announcements, updates needing manual intervention).
-- undo: undo / revert what the ASSISTANT did last, no package named ("отмени", "верни как было").
+- undo: undo / revert what the ASSISTANT did last, no package or reminder named ("отмени", "верни как было").
 - history: what the assistant has done recently.
 - game: whether a game runs on Linux / on this computer, or whether the computer is ready for games
   (drivers, Steam, Proton).
+- convert: convert, compress, cut, resize media files (video, audio, images), make a gif, strip
+  metadata, or pack / unpack archives.
+- schedule: the user asks the ASSISTANT to do something later or regularly — remind me, every day /
+  every week / in N minutes, turn the computer off at a time; or list / cancel such reminders and tasks
+  the assistant set up. Not the user's own timetable, plans or schedule kept in their files (that is docs).
 - translate: translate a word, phrase or text into another language ("переведи на английский…",
   "как будет «кошка» по-немецки").
 - chat: greetings, thanks, small talk, or questions about the assistant itself.
@@ -83,7 +90,8 @@ text:
 - bigfiles, files: the folder the user named as a path like "~/Downloads", else "".
 - service: the systemd unit name or keyword (sound -> "pipewire", wifi -> "NetworkManager",
   bluetooth -> "bluetooth", printer -> "cups").
-- processes: the program name if the user named one, else "".
+- processes: the program name if the user named one; "heat" when asking why it is hot or the fans are
+  loud; "battery" when asking what drains the battery; else "".
 - pkginfo: the command name or file path the user asks about.
 - network: the port number if asked about a port, "public ip" if asked for the external IP, else "".
 - web: a short web search query about EXACTLY the user's topic. The user's computer runs @SYSTEM@,
@@ -102,7 +110,8 @@ text:
 
 action: service -> status/start/stop/restart/enable/disable (status if unclear);
 processes -> "kill" when the user wants to close or kill a program; docs -> "add" or "remove"
-when managing folders; otherwise "".
+when managing folders; schedule -> "status" to list scheduled tasks, "remove" to cancel one, else "add";
+otherwise "".
 
 Earlier turns of the conversation may be included: use them to resolve follow-ups like
 "а теперь удали его", "а как это отключить?", "и ещё дискорд" (take names/topics from them).
@@ -138,6 +147,8 @@ EXAMPLES = [
     ("перезапусти блютуз", _ex("service", text="bluetooth", action="restart")),
     ("убери ssh из автозагрузки", _ex("service", text="sshd", action="disable")),
     ("что тормозит комп", _ex("processes")),
+    ("почему ноут так шумит", _ex("processes", text="heat")),
+    ("что садит батарею", _ex("processes", text="battery")),
     ("закрой стим", _ex("processes", text="steam", action="kill")),
     ("в каком пакете команда convert", _ex("pkginfo", text="convert")),
     ("какая у меня видеокарта и драйвер", _ex("sysinfo")),
@@ -155,6 +166,7 @@ EXAMPLES = [
     ("добавь папку ~/Documents в источники", _ex("docs", text="~/Documents", action="add")),
     ("что у меня в заметках про настройку роутера", _ex("docs", text="router setup notes")),
     ("check my shopping list, do I need milk", _ex("docs", text="shopping list milk")),
+    ("какие пары у меня в среду по расписанию", _ex("docs", text="Wednesday class timetable")),
     ("после обновления пропал звук", _ex("afterupdate", text="sound")),
     ("что сломалось после апдейта?", _ex("afterupdate")),
     ("пойдёт ли у меня ведьмак 3", _ex("game", text="The Witcher 3")),
@@ -164,6 +176,11 @@ EXAMPLES = [
     ("что такое initramfs", _ex("explain", text="initramfs")),
     ("что значит error: failed to commit transaction (conflicting files)",
      _ex("explain", text="error: failed to commit transaction (conflicting files)")),
+    ("сделай из этого ролика гифку", _ex("convert")),
+    ("распакуй архив из загрузок", _ex("convert")),
+    ("напомни через час вынуть бельё", _ex("schedule", action="add")),
+    ("какие у меня есть напоминания", _ex("schedule", action="status")),
+    ("убери напоминание", _ex("schedule", action="remove")),
     ("перекрась себя в зелёный", _ex("theme", text="зелёный")),
     ("есть важные новости арча?", _ex("news")),
     ("отмени последнее", _ex("undo")),
@@ -216,6 +233,19 @@ def build_messages(query: str, context: list[dict] | None = None) -> list[dict]:
     return msgs
 
 
+def details(url: str, model: str, query: str, system: str, examples: list[tuple[str, dict]], schema: dict) -> dict:
+    """Second, short call for an intent with its own fields (convert, schedule): {} when it fails."""
+    msgs = [{"role": "system", "content": system}]
+    for q, a in examples:
+        msgs += [{"role": "user", "content": q}, {"role": "assistant", "content": json.dumps(a, ensure_ascii=False)}]
+    msgs.append({"role": "user", "content": query})
+    try:
+        data = json.loads(llm.chat(url, model, msgs, schema=schema, timeout=60))
+    except (llm.LLMError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def _norm_pkg(name: str) -> str:
     return re.sub(r"[^a-z0-9@._+-]", "", re.sub(r"\s+", "-", name.strip().lower()))
 
@@ -234,7 +264,9 @@ def parse(raw: str) -> Intent:
 
 
 def classify(url: str, model: str, query: str, context: list[dict] | None = None) -> Intent:
-    r = llm.chat_full(url, model, build_messages(query, context), schema=SCHEMA, logprobs=True)
+    msgs = build_messages(query, context)
+    llm.prime(url, model, msgs[:-1])
+    r = llm.chat_full(url, model, msgs, schema=SCHEMA, logprobs=True)
     content, lps = r["message"]["content"], r.get("logprobs") or []
     it = parse(content)
     it.model = model

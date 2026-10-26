@@ -17,14 +17,14 @@ import time
 from pathlib import Path
 
 from shellmate import (cmdcheck, config, disk, docs, errors, i18n, llm, news, onboarding, packages, persona, router, runner,
-                    state, system, ui, updates, web)
+                    schedule, state, system, ui, updates, web)
 from shellmate.i18n import plural, t
 from shellmate.packages import Pkg
 from shellmate.prompts import (CHAT_TASK, TRANSLATE_AGAIN, TRANSLATE_SCHEMA, TRANSLATE_TASK, capabilities,
                                defang, explain_task, lang_of, ui_language)
 from shellmate.skills_knowledge import KnowledgeSkills
 from shellmate.skills_system import SystemSkills
-from shellmate.skills_tools import ToolSkills, known_program
+from shellmate.skills_tools import FileSkills, ToolSkills, known_program
 
 
 def pick_color(name: str, current: str) -> str | None:
@@ -77,7 +77,7 @@ def fmt(p: Pkg) -> str:
     return f"{ui.bold(name)} {ui.dim(p.source + ' ' + p.version)}{mark}  {p.desc}"
 
 
-class App(SystemSkills, KnowledgeSkills, ToolSkills):
+class App(SystemSkills, KnowledgeSkills, ToolSkills, FileSkills):
     def __init__(self, cfg: config.Config, dry_run: bool):
         self.cfg = cfg
         self.dry = dry_run
@@ -118,11 +118,15 @@ class App(SystemSkills, KnowledgeSkills, ToolSkills):
         i = ui.choose([fmt(p) for p in candidates], f"{want} >")
         return None if i is None else candidates[i]
 
-    def execute(self, cmds: list[list[str]], label: str = "", undo: dict | None = None) -> int:
+    def execute(self, cmds: list[list[str]], label: str = "", undo: dict | None = None, batch: bool = False) -> int:
         """Confirms and runs commands; a fully successful run is written to the action log
-        together with `undo` — data describing how to revert it (see App.undo)."""
+        together with `undo` — data describing how to revert it (see App.undo).
+        batch: one confirmation for all of them (the same operation over many files)."""
+        if batch and not ui.confirm_many(cmds, self.phrase("run")):
+            self.say(self.phrase("cancelled"))
+            return 1
         for cmd in cmds:
-            if not ui.confirm(cmd, self.phrase("run")):
+            if not batch and not ui.confirm(cmd, self.phrase("run")):
                 self.say(self.phrase("cancelled"))
                 return 1
             if self.dry:
@@ -230,6 +234,8 @@ class App(SystemSkills, KnowledgeSkills, ToolSkills):
             return 1
         with ui.working(t(f"ищу «{want}»…", f"looking for “{want}”…")):
             found = packages.search(want, self.cfg.use_flatpak, self.cfg.max_results)
+        if not found and not it.packages and " " in want:  # a category, not a name: the wikis know the options
+            return self.web(it, query)
         p = self.pick(want, found)
         if not p:
             return 0
@@ -466,6 +472,11 @@ class App(SystemSkills, KnowledgeSkills, ToolSkills):
             return packages.remove_commands(pkgs) if kind == "remove" else packages.install_commands(pkgs)
         if kind == "service":
             return [system.Unit(spec["unit"], "", "", spec.get("user", False)).cmd(spec["action"])]
+        if kind == "created":  # files a conversion made: to the trash, if they're still there
+            paths = [p for p in spec.get("paths", []) if os.path.exists(p)]
+            return [["gio", "trash", "--", *paths]] if paths else None
+        if kind == "schedule":
+            return schedule.remove_commands(spec["unit"], spec.get("transient", False), spec.get("files"))
         if kind == "untrash":  # find the file in the trash now — its trash name may have a suffix
             uris = [line.split("\t")[0] for line in packages.run_quiet(["gio", "trash", "--list"]).splitlines()
                     if line.split("\t")[-1] == spec["path"]]
@@ -489,7 +500,7 @@ class App(SystemSkills, KnowledgeSkills, ToolSkills):
             return 1
         ui.panel(t("Отменяю", "Undoing"), [f"{ui.bold(e['label'])}  {ui.dim(when)}",
                  ui.dim(t("по запросу: ", "requested as: ") + e["query"]) if e.get("query") else ""], "warn", "↶")
-        rc = self.execute(cmds, t("отмена: ", "undo: ") + e["label"])
+        rc = self.execute(cmds, t("отмена: ", "undo: ") + e["label"], batch=True)
         if rc == 0 and not self.dry:
             state.mark_undone(self.cfg.name, e["id"])
         return rc

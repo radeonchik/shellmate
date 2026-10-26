@@ -88,14 +88,21 @@ def _rank(p: Pkg, want: str) -> tuple:
     return (match, origin, -p.votes, p.name)
 
 
+# words of a category request that no package description has all of ("file search utilities linux")
+GENERIC = {"linux", "utility", "utilities", "tool", "tools", "app", "apps", "application", "applications",
+           "program", "programs", "software", "best", "good", "free", "open", "source", "for", "the"}
+
+
 def search(want: str, use_flatpak: bool = True, limit: int = 15) -> list[Pkg]:
     """Search the distro repos (+ AUR) + Flatpak + Snap. If the exact guess finds nothing,
-    retry with its separate words."""
+    retry with its separate words, then without the generic ones."""
     found = _search_once(want, use_flatpak)
-    if not found:
-        words = [w for w in re.split(r"[-_\s]+", want) if len(w) > 2]
-        if len(words) > 1:
-            found = _search_once(" ".join(words), use_flatpak)
+    words = [w for w in re.split(r"[-_\s]+", want) if len(w) > 2]
+    if not found and len(words) > 1:
+        found = _search_once(" ".join(words), use_flatpak)
+    specific = [w for w in words if w.lower() not in GENERIC]
+    if not found and specific and specific != words:
+        found = _search_once(" ".join(specific), use_flatpak)
     seen, uniq = set(), []
     for p in found:  # first occurrence wins = the package manager's repo priority
         key = (p.source if not p.is_native else "", p.name)

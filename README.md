@@ -16,6 +16,9 @@ shellmate add ~/Documents to sources      shellmate what do my notes say about t
 shellmate translate “good morning” into Spanish   cat notes.txt | shellmate translate to English
 shellmate what broke after the update    shellmate will elden ring run
 shellmate is my computer ready for games shellmate --check 'curl -fsSL https://x.sh | sh'
+shellmate compress video.mp4 to 50 mb     shellmate convert the heic photos in Downloads to jpg
+shellmate remind me in an hour to call    shellmate clean old files from Downloads every week
+shellmate why is my laptop so hot         shellmate what drains my battery
 sudo apt install foo 2>&1 | shellmate explain
 ```
 
@@ -87,6 +90,20 @@ assistant: `shellmate --alias friday`, after which `friday update the system` wo
   in the clipboard. After `--install-shell`, Alt+E in fish does the same for the typed line.
 - “what broke after the update”, “no sound since the update” — the last update from the package log,
   the errors that appeared after it and the packages they point to; roll the culprit back from the menu.
+- “compress the video to 50 MB”, “heic in Downloads to jpg”, “cut 1:05 to 1:40”, “a gif from the
+  clip”, “the sound of the clip as mp3”, “unpack the archive”, “pack the folder into 7z” — the ffmpeg,
+  ImageMagick and bsdtar commands are built by code; the result goes next to the source, which is never
+  touched, a batch of files takes one confirmation, and `undo` moves the results to the trash. Offers
+  to install ffmpeg/ImageMagick when they're missing.
+- “remind me in 20 minutes…”, “every Friday at 18:00 remind me…”, “clean files older than a month from
+  Downloads every week”, “turn the computer off at 23:30”, “run ~/bin/sync.sh every day at 3 am” —
+  systemd user timers, no root; cleaning only moves to the trash and only in folders inside home; your
+  own command is checked like `--check` (no sudo, nothing dangerous). “what's scheduled”, “remove the
+  reminder”, `undo`.
+- “why is it slow / hot / draining the battery” — code reads the CPU load, memory shortage and swap,
+  disk waits (PSI), a full disk, overheating with a dropped clock, power saver mode, an awake NVIDIA
+  GPU and what holds it, the drain in watts and background jobs (updates, indexing, AUR builds); offers
+  to close the culprit or switch the power mode.
 - “will game X run” — Steam and GOG, the ProtonDB rating, Steam Deck, anti-cheat and reports from people
   with the same GPU generation; “is my computer ready for games” — drivers, Vulkan, 32-bit libraries,
   Steam, GameMode.
@@ -151,6 +168,9 @@ cache) → an explanation by the model marked “no sources, may be wrong”.
 | `cmdcheck.py`, `manpages.py` | parsing a command without running it, risk rules, option descriptions from man |
 | `afterupdate.py`, `pkglog.py` | package logs, new errors after an update and their packages |
 | `games.py` | Steam, GOG, ProtonDB, Steam Deck, anti-cheat, readiness for games |
+| `convert.py` | converting and compressing: a plan → ffmpeg / ImageMagick / bsdtar commands, names that never overwrite |
+| `schedule.py` | schedules: when (OnCalendar), what to run, systemd user timers |
+| `slow.py` | why it's slow, hot or draining the battery: measurements and rules |
 | `i18n.py` | interface language: `t("по-русски", "in English")` side by side in the code |
 | `cli.py` | entry point, confirmations, log, undo, conversation |
 | `ui.py` | animation, panels, themes, fzf menus |

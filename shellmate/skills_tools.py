@@ -1,7 +1,9 @@
 """Intent handlers for tools: explaining a command before it runs, what broke after an update,
-whether a game runs here.
+whether a game runs here, converting files, tasks on a schedule.
 Mixed into cli.App, so `self` has say/phrase/execute/cfg/_translate."""
 
+import os
+import re
 import shutil
 import sys
 import urllib.parse
@@ -9,7 +11,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from shellmate import afterupdate, backends, cmdcheck, games, library, manpages, news, packages, router, system, ui, web
+from shellmate import (afterupdate, backends, cmdcheck, convert, disk, docs, games, library, manpages, news, packages, router,
+                       schedule, system, ui, web)
 from shellmate.packages import Pkg, run_quiet
 from shellmate.i18n import plural, t
 from shellmate.prompts import lang_of, ui_language
@@ -443,3 +446,175 @@ def _matching_example(page, c: cmdcheck.Simple) -> str:
         if s > score:
             best, score = what.rstrip(":"), s
     return best if score >= 0.6 else ""
+
+
+OPERATION = {"convert": ("конвертация", "conversion"), "compress": ("сжатие", "compression"), "trim": ("вырезка куска", "trim"),
+             "extract_audio": ("звук из видео", "audio from video"), "remove_audio": ("видео без звука", "mute video"),
+             "to_gif": ("gif из видео", "gif from video"), "resize": ("смена размера", "resize"),
+             "strip_metadata": ("удаление метаданных", "metadata removal"), "extract": ("распаковка", "unpacking"),
+             "archive": ("упаковка в архив", "packing")}
+
+
+OWN_PLANS = re.compile(r"расписани|планы|планирую|schedule|timetable|plans?\b", re.I)
+ASSISTANT_TASKS = re.compile(r"напомина|задач|таймер|запланирова|автоматич|remind|task|timer|scheduled", re.I)
+
+
+def _size(path: str) -> int:
+    p = Path(path)
+    if p.is_dir():
+        return sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+    return p.stat().st_size if p.exists() else 0
+
+
+class FileSkills:
+    """Mixed into cli.App like ToolSkills."""
+
+    # --- convert and compress -------------------------------------------------------------------
+
+    def convert(self, it, query: str) -> int:
+        with ui.working(t("разбираю, что сделать с файлами…", "working out what to do with the files…")):
+            data = router.details(self.cfg.ollama_url, self.cfg.model, query, convert.CONVERT_SYSTEM,
+                                  convert.EXAMPLES, convert.CONVERT_SCHEMA)
+        if not data:
+            self.say(self.phrase("unclear", what=t("сделать с файлами", "to do with the files")))
+            return 1
+        plan = convert.Plan.from_json(data)
+        cwd = Path.cwd()
+        paths, missing = convert.resolve(plan.inputs, cwd)
+        if missing:
+            self.say(ui.yellow(t("не нашёл: ", "couldn't find: ") + ", ".join(missing)))
+            if not paths:
+                return 1
+        if not paths:
+            if plan.operation == "archive":
+                self.say(self.phrase("unclear", what=t("упаковать", "to pack")))
+                return 1
+            cands = convert.candidates(convert.wanted_kinds(plan), cwd)
+            if not cands:
+                self.say(ui.yellow(t("подходящих файлов нет ни здесь, ни в Загрузках — назови файл",
+                                     "no suitable files here or in Downloads — name the file")))
+                return 1
+            i = ui.choose([f"{docs.short(str(f))}  {ui.dim(disk.human(f.stat().st_size))}" for f in cands],
+                          t("какой файл >", "which file >"))
+            if i is None:
+                return 0
+            paths = [str(cands[i])]
+        # commands and the panel read better with names relative to here; undo keeps absolute paths
+        paths = [os.path.relpath(x) if Path(x).resolve().is_relative_to(cwd.resolve()) else x for x in paths]
+        with ui.working(t("смотрю файлы…", "looking at the files…")):
+            steps, problems = convert.steps(plan, paths)
+        for p in problems:
+            ui.problem(p)
+        if not steps:
+            return 1
+        heic = any(Path(x).suffix.lower() in (".heic", ".heif") for x in paths)
+        need = convert.tools_needed(steps, heic)
+        if need and self._install_tools(need) != 0:
+            return 1
+        what = t(*OPERATION[plan.operation])
+        lines = [f"{docs.short(s.source)} {ui.dim('→')} {ui.bold(docs.short(s.output))}" for s in steps[:5]]
+        if len(steps) > 5:
+            lines.append(ui.dim(t(f"… и ещё {len(steps) - 5}", f"… and {len(steps) - 5} more")))
+        lines.append(ui.dim(t("исходные файлы не меняются", "the originals stay as they are")))
+        ui.panel(what.capitalize(), lines, "accent", "⇄")
+        cmds = [c for s in steps for c in s.argv]
+        outputs = [s.output for s in steps]
+        rc = self.execute(cmds, f"{what}: " + ", ".join(Path(o).name for o in outputs[:3]) + ("…" if len(outputs) > 3 else ""),
+                          {"kind": "created", "paths": [os.path.abspath(o) for o in outputs]}, batch=True)
+        if rc == 0 and not self.dry:
+            rows = []
+            for st in steps:
+                before = sum(_size(x) for x in st.source.split(", ")) if plan.operation == "archive" else _size(st.source)
+                rows.append(f"{ui.bold(docs.short(st.output))}  {ui.dim(disk.human(before))} → {disk.human(_size(st.output))}")
+            ui.panel(t("Готово", "Done"), rows[:10], "ok", "✓")
+        return rc
+
+    def _install_tools(self, need: list[str]) -> int:
+        family = backends.distro().family
+        names = [convert.package_for(n, family) for n in need]
+        self.say(ui.yellow(t("для этого нужно поставить: ", "this needs: ") + ", ".join(names)))
+        if not sys.stdin.isatty() or not self.ask_yes(t("Поставить?", "Install?")):
+            return 1
+        pkgs = [Pkg("repo", n, "") for n in names]
+        return self.execute(packages.install_commands(pkgs), t("установка: ", "install: ") + ", ".join(names),
+                            {"kind": "remove", **self._by_kind(pkgs)})
+
+    # --- schedule --------------------------------------------------------------------------------
+
+    def schedule(self, it, query: str) -> int:
+        # "что у меня по расписанию в пятницу" is the user's own timetable, not a reminder the assistant set
+        if it.action == "status" and OWN_PLANS.search(query) and not ASSISTANT_TASKS.search(query):
+            return self.docs(router.Intent("docs", text=it.text), query)
+        if it.action == "status":
+            return self._schedule_list()
+        if it.action == "remove":
+            return self._schedule_remove()
+        with ui.working(t("разбираю расписание…", "working out the schedule…")):
+            data = router.details(self.cfg.ollama_url, self.cfg.model, query, schedule.SCHEDULE_SYSTEM,
+                                  schedule.EXAMPLES, schedule.SCHEDULE_SCHEMA)
+        if not data:
+            self.say(self.phrase("unclear", what=t("и когда сделать", "to do and when")))
+            return 1
+        spec = schedule.Spec.from_json(data)
+        try:
+            w = schedule.when(spec)
+            argv, what = schedule.action(spec, self.cfg.name)
+        except ValueError as e:
+            self.say(ui.yellow(str(e)))
+            return 1
+        name = schedule.unit_name(spec.task)
+        description = f"shellmate: {what} — {w.label}"
+        nxt = schedule.next_run(w.calendar) if w.calendar and not w.once else ""
+        lines = [f"{ui.bold(what)}", f"{ui.accent(w.label)}" + (ui.dim(t(f" · ближайший раз: {nxt}", f" · next: {nxt}")) if nxt else "")]
+        if w.once:
+            lines.append(ui.dim(t("разовая задача: если выключить компьютер раньше, она не сработает",
+                                  "a one-off task: it won't fire if the computer is off before then")))
+        elif not w.login:
+            lines.append(ui.dim(t("если компьютер в это время выключен — выполнится при следующем включении",
+                                  "if the computer is off at that time, it runs at the next start")))
+        if spec.task == "poweroff":
+            lines.append(ui.yellow(t("несохранённая работа в программах пропадёт", "unsaved work in programs will be lost")))
+        if spec.task == "clean_folder":
+            lines.append(ui.dim(t("файлы уходят в корзину — их можно вернуть", "files go to the trash — they can be restored")))
+        lines.append(ui.dim(t("отменить: «убери задачу» или «отмени»", "to cancel: “remove the task” or “undo”")))
+        ui.panel(t("Задача по расписанию", "Scheduled task"), lines, "accent", "⏰")
+        label = t("расписание: ", "schedule: ") + f"{what} — {w.label}"
+        if w.once:
+            return self.execute([schedule.transient(name, description, argv, w)], label,
+                                {"kind": "schedule", "unit": f"{name}.timer", "transient": True})
+        folder = schedule.user_dir()
+        files = schedule.unit_files(name, description, argv, w)
+        written = []
+        if not self.dry:
+            folder.mkdir(parents=True, exist_ok=True)
+            for fname, text in files.items():
+                (folder / fname).write_text(text)
+                written.append(str(folder / fname))
+        rc = self.execute([["systemctl", "--user", "daemon-reload"], ["systemctl", "--user", "enable", "--now", f"{name}.timer"]],
+                          label, {"kind": "schedule", "unit": f"{name}.timer", "files": written}, batch=True)
+        if rc != 0:
+            for f in written:
+                Path(f).unlink(missing_ok=True)
+        return rc
+
+    def _schedule_list(self) -> int:
+        tasks = schedule.tasks()
+        if not tasks:
+            self.say(t("задач по расписанию нет", "no scheduled tasks"))
+            return 0
+        lines = [f"{ui.bold(x.description or x.unit)}" + (ui.dim(t(f"  · следующий раз: {x.next}", f"  · next: {x.next}")) if x.next else "")
+                 for x in tasks]
+        ui.panel(t("По расписанию", "Scheduled"), lines, "accent", "⏰")
+        return 0
+
+    def _schedule_remove(self) -> int:
+        tasks = schedule.tasks()
+        if not tasks:
+            self.say(t("задач по расписанию нет", "no scheduled tasks"))
+            return 0
+        i = 0 if len(tasks) == 1 else ui.choose([x.description or x.unit for x in tasks], t("убрать >", "remove >"))
+        if i is None:
+            return 0
+        x = tasks[i]
+        return self.execute(schedule.remove_commands(x.unit, x.transient), t("убрал задачу: ", "removed the task: ") + (x.description or x.unit),
+                            batch=True)

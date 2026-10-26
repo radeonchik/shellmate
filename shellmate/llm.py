@@ -72,6 +72,41 @@ def _post(url: str, body: dict, timeout: float) -> dict:
         return json.load(r)
 
 
+_FAMILY: dict[str, str] = {}
+
+
+def family(url: str, model: str) -> str:
+    """The model's architecture family from Ollama ('qwen35', 'llama'…); '' when unknown."""
+    if model not in _FAMILY:
+        try:
+            req = urllib.request.Request(url.rstrip("/") + "/api/show", data=json.dumps({"model": model}).encode(),
+                                         headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                _FAMILY[model] = (json.load(r).get("details") or {}).get("family", "")
+        except (urllib.error.URLError, OSError, ValueError):
+            _FAMILY[model] = ""
+    return _FAMILY[model]
+
+
+def prime(url: str, model: str, messages: list[dict], num_ctx: int = 8192) -> None:
+    """Hybrid models (Qwen3.5 and its fine-tunes like Bonsai have recurrent layers) reuse a cached
+    prompt only from a checkpoint, and llama.cpp puts those 4 and ~1024 tokens before a prompt's end.
+    The next request with another question can't use either, so ~1000 tokens of examples were read
+    again every time. A prompt that ends where the user's message begins leaves a checkpoint every
+    request starts from (and each request then keeps one there). ChatML only (the Qwen family) — with
+    another template the prefix wouldn't match and this would cost a full read instead."""
+    if not family(url, model).startswith("qwen"):
+        return
+    # one token past the shared part: a prompt must leave something to read, so a checkpoint at its very
+    # end can't serve the same prompt again, and every priming would fall back ~1024 tokens
+    raw = "".join(f"<|im_start|>{m['role']}\n{m['content']}<|im_end|>\n" for m in messages) + "<|im_start|>user\n."
+    try:
+        _post_raw(url, "/api/generate", {"model": model, "prompt": raw, "raw": True, "stream": False, "keep_alive": "15m",
+                                         "options": {"temperature": 0, "num_ctx": num_ctx, "num_predict": 1}}, 60)
+    except (urllib.error.URLError, OSError, http.client.HTTPException):
+        pass  # only a speed-up: the real request reports real problems
+
+
 def span_confidence(content: str, logprobs: list[dict], start: int, end: int) -> float:
     """Lowest token probability inside content[start:end] — how sure the model was about that
     part of its answer (e.g. the intent value). 1.0 when there are no tokens there."""

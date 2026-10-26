@@ -3,10 +3,12 @@ Mixed into cli.App, so `self` has say/phrase/execute/ask_model/cfg."""
 
 import os
 import re
+import shlex
 import shutil
+import sys
 from pathlib import Path
 
-from shellmate import disk, errors, packages, system, ui
+from shellmate import disk, errors, packages, slow, system, ui
 from shellmate.i18n import t
 from shellmate.packages import run_quiet
 from shellmate.prompts import explain_task, lang_of, log_task, ui_language
@@ -109,9 +111,16 @@ class SystemSkills:
     # --- processes ------------------------------------------------------------
 
     def processes(self, it, query: str) -> int:
-        with ui.working(t("замеряю нагрузку…", "measuring the load…")):
-            groups = system.processes()
-        if it.text:
+        focus = it.text if it.text in ("heat", "battery") else ""
+        if focus or (not it.text and it.action != "kill"):
+            with ui.working(t("замеряю процессор, память, диск и температуру…", "measuring CPU, memory, disk and temperature…")):
+                sample = slow.measure(focus)
+            groups = sample.groups
+            self._diagnosis(slow.diagnose(sample, focus), focus)
+        else:
+            with ui.working(t("замеряю нагрузку…", "measuring the load…")):
+                groups = system.processes()
+        if it.text and not focus:
             groups = [g for g in groups if it.text.lower() in g.name.lower()]
             if not groups:
                 self.say(ui.yellow(self.phrase("not_found", q=it.text)))
@@ -135,6 +144,19 @@ class SystemSkills:
         if i is None:
             return 0
         return self.execute([system.kill_command(top[i])], t("завершение: ", "kill: ") + top[i].name)
+
+    def _diagnosis(self, findings: list, focus: str) -> None:
+        marks = {"bad": ui.red("✗"), "warn": ui.yellow("!"), "info": ui.dim("·"), "ok": ui.green("✓")}
+        lines = []
+        for f in findings:
+            lines.append(f"{marks[f.level]} {f.text}")
+            if f.hint:
+                lines.append(ui.dim(f"    {f.hint}"))
+        title = {"heat": t("Почему греется", "Why it's hot"), "battery": t("Что тратит батарею", "What drains the battery")}
+        ui.panel(title.get(focus, t("Почему тормозит", "Why it's slow")), lines, "accent", "⚡")
+        for f in findings:
+            if f.fix and sys.stdin.isatty() and self.ask_yes(t(f"Исправить: {shlex.join(f.fix)}?", f"Fix it: {shlex.join(f.fix)}?")):
+                self.execute([f.fix], t("режим питания", "power mode"))
 
     # --- package info ---------------------------------------------------------
 

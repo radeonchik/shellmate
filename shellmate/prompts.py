@@ -54,7 +54,7 @@ CAPABILITIES_RU = """  установить, удалить и найти про
   показать место на диске, почистить мусор, найти самые большие файлы, сказать, что лежит в папке
   проверить систему: упавшие сервисы и ошибки в журнале
   управлять сервисами (звук, блютуз, wi-fi…): статус, перезапуск, автозапуск
-  показать, что грузит процессор и память, и закрыть программу
+  понять, почему компьютер тормозит, греется или быстро садит батарею, и закрыть программу
   сказать, из какого пакета команда или файл
   сводка о системе: железо, драйверы, температура, батарея
   сеть: есть ли интернет, IP, Wi-Fi, кто занял порт
@@ -63,6 +63,8 @@ CAPABILITIES_RU = """  установить, удалить и найти про
   объяснить ошибку (можно так: команда 2>&1 | {name} explain)
   объяснить команду, не запуская её, и предупредить об опасном ({name} --check, в fish — Alt+E)
   сказать, пойдёт ли игра на этом железе (ProtonDB, Steam Deck, античит) и готов ли компьютер к играм
+  конвертировать и сжать видео, звук и картинки, сделать gif, распаковать и упаковать архив
+  напомнить и сделать что-то по расписанию: «напомни через час…», «каждую неделю чисти загрузки», «выключи комп в 23:00»
   перевести текст (можно и файл: cat файл | {name} переведи на английский)"""
 
 CAPABILITIES_EN = """  install, remove and find programs ({sources})
@@ -71,7 +73,7 @@ CAPABILITIES_EN = """  install, remove and find programs ({sources})
   show disk space, clean up junk, find the biggest files, tell what is in a folder
   check the system: failed services and errors in the journal
   manage services (sound, bluetooth, wi-fi…): status, restart, autostart
-  show what loads the CPU and memory, and close a program
+  find out why the computer is slow, hot or drains the battery, and close a program
   tell which package a command or file comes from
   system overview: hardware, drivers, temperature, battery
   network: is the internet up, IP, Wi-Fi, who holds a port
@@ -80,6 +82,8 @@ CAPABILITIES_EN = """  install, remove and find programs ({sources})
   explain an error (like this: command 2>&1 | {name} explain)
   explain a command without running it and warn about anything dangerous ({name} --check, in fish — Alt+E)
   tell whether a game runs on this hardware (ProtonDB, Steam Deck, anti-cheat) and whether the computer is ready for games
+  convert and compress video, audio and images, make a gif, unpack and pack archives
+  remind and do things on a schedule: “remind me in an hour…”, “clean Downloads every week”, “turn off at 23:00”
   translate a text (a file too: cat file | {name} translate to Russian)"""
 
 

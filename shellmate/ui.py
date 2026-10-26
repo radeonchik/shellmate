@@ -400,3 +400,22 @@ def confirm(cmd: list[str], question: str = "") -> bool:
     except EOFError:
         return False
     return ans.strip().lower() in ("y", "yes", "д", "да")
+
+
+def confirm_many(cmds: list[list[str]], question: str = "", show: int = 3) -> bool:
+    """One confirmation for a batch of similar commands (a folder of photos): the first few and a count."""
+    if len(cmds) == 1:
+        return confirm(cmds[0], question)
+    question = question or t("Выполнить?", "Run them?")
+    color = "warn" if any(c[:1] == ["sudo"] for c in cmds) else "accent"
+    print(rgb(color, "╭─ ") + bold(rgb(color, t(f"команды ({len(cmds)})", f"commands ({len(cmds)})"))))
+    for cmd in cmds[:show]:
+        for part in wrap(f"{dim('$')} {bold(shlex.join(cmd))}", max(20, cols() - 3)):
+            print(f"{rgb(color, '│')} {part}")
+    if len(cmds) > show:
+        print(f"{rgb(color, '│')} {dim(t(f'… и ещё {len(cmds) - show} таких же', f'… and {len(cmds) - show} more like these'))}")
+    try:
+        ans = input(rgb(color, "╰─ ") + f"{question} {dim('[y/N]')} ")
+    except EOFError:
+        return False
+    return ans.strip().lower() in ("y", "yes", "д", "да")

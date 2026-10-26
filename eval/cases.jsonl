@@ -128,3 +128,21 @@
 {"q": "объясни команду sudo dd if=image.iso of=/dev/sdb bs=4M", "intent": "explain", "pkgs": []}
 {"q": "как сменить оболочку по умолчанию на fish", "intent": "web", "pkgs": []}
 {"q": "покажи журнал службы sshd", "intent": "service", "pkgs": []}
+{"q": "сожми видео из загрузок, чтобы влезло в телеграм", "intent": "convert", "pkgs": []}
+{"q": "convert all the heic photos in Downloads to jpg", "intent": "convert", "pkgs": []}
+{"q": "вытащи музыку из клипа в mp3", "intent": "convert", "pkgs": []}
+{"q": "распакуй rar архив", "intent": "convert", "pkgs": []}
+{"q": "заархивируй папку проекты в zip", "intent": "convert", "pkgs": []}
+{"q": "убери метаданные с фоток перед отправкой", "intent": "convert", "pkgs": []}
+{"q": "напомни в 7 вечера забрать посылку", "intent": "schedule", "pkgs": []}
+{"q": "каждое утро в 9 напоминай про зарядку", "intent": "schedule", "pkgs": []}
+{"q": "выключи компьютер через 40 минут", "intent": "schedule", "pkgs": []}
+{"q": "remind me in 15 minutes to check the oven", "intent": "schedule", "pkgs": []}
+{"q": "какие у меня запланированы задачи", "intent": "schedule", "pkgs": []}
+{"q": "отмени напоминание про посылку", "intent": "schedule", "pkgs": []}
+{"q": "почему ноутбук такой горячий", "intent": "processes", "pkgs": []}
+{"q": "why does my battery die so fast", "intent": "processes", "pkgs": []}
+{"q": "комп стал медленно работать", "intent": "processes", "pkgs": []}
+{"q": "сколько осталось заряда", "intent": "sysinfo", "pkgs": []}
+{"q": "что лежит в загрузках", "intent": "files", "pkgs": []}
+{"q": "отмени последнее действие", "intent": "undo", "pkgs": []}

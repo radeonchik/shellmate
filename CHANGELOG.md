@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.4.0
+
+- **Converting and compressing files.** “Compress the video to 50 MB” (the bitrate is computed from
+  the length, a 4K clip squeezed into a small file goes down to a sharp 1080p or less), change the
+  format, cut a piece, a gif with a proper palette, the sound out of a video, a silent video, resize,
+  strip EXIF/GPS; images through ImageMagick 7 or 6 (heic, webp, avif…); archives unpacked (no
+  folder/folder when the archive has its own) and packed into zip, tar.gz/xz/zst or 7z. The model fills
+  a second, small JSON schema; the commands are built by code. Outputs never overwrite anything, a
+  batch takes one confirmation, `undo` moves the results to the trash, missing tools are offered for
+  installation (Fedora's `ffmpeg-free` without x264 gets OpenH264).
+- **Tasks on a schedule.** Reminders (notifications), cleaning old files from a folder (to the trash,
+  only folders inside home, never settings folders), emptying the trash, turning the computer off later,
+  your own command (checked like `--check`: no sudo, nothing dangerous) — once, hourly, daily, weekly,
+  monthly or at login. systemd user timers, no root: repeating ones as unit files (`Persistent=true`:
+  a missed run happens at the next start), one-off ones with `systemd-run`. List and remove them by
+  asking, or `undo`.
+- **Why it's slow, hot or draining the battery.** Measured by code: CPU load and a runaway process,
+  memory shortage and swap, disk waits (pressure stall information), a full disk, overheating with a
+  dropped clock, power saver mode, the NVIDIA GPU awake on a hybrid laptop and what holds it (an app,
+  or the desktop itself), the drain in watts, background jobs (updates, indexing, AUR builds, Ollama).
+  Offers to close the culprit or switch the power profile.
+- **Requests are understood twice as fast.** Bonsai/Qwen3.5 have recurrent layers, and llama.cpp
+  reuses a cached prompt for them only from a checkpoint, which it puts ~1024 and 4 tokens before the
+  prompt's end — so the ~1000 tokens of routing examples were read again on every request. A tiny
+  priming request now leaves a checkpoint right where the user's message begins: routing 1.5 → 0.7 s
+  (4B) and 2.5 → 1.3 s (9B). Only for the Qwen family (ChatML), where the prefix is known to match.
+- Package search for a category (“file search utilities linux”) retries without generic words, and
+  falls back to the wikis and the web instead of “nothing found”.
+- The version of a git working copy (editable install) comes from `pyproject.toml`: the installed
+  metadata kept the version of the day it was installed, so `--update` kept offering a release that
+  was already there.
+- `undo` takes one confirmation for all its commands.
+
 ## 0.3.3
 
 - **Offline documentation.** The setup (or `--library update`) downloads ArchWiki — the best general

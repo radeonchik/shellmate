@@ -4,7 +4,7 @@ CI runs it in real Arch / Debian / Ubuntu / Fedora containers; users can run it 
 import traceback
 from datetime import datetime
 
-from shellmate import backends, cmdcheck, library, packages, ui
+from shellmate import backends, cmdcheck, convert, library, packages, slow, ui
 from shellmate.backends.base import info_labels
 from shellmate.i18n import t
 
@@ -49,6 +49,10 @@ def run() -> int:
           lambda v: v[:1] == ["danger"])
     check(t("справка без интернета (для этой системы)", "offline documentation (for this system)"),
           lambda: [s.id for s in library.wanted()], lambda v: "archwiki" in v and "tldr" in v)
+    check(t("замеры «почему тормозит»", "measurements for “why is it slow”"),
+          lambda: [f.level for f in slow.diagnose(slow.measure())], lambda v: bool(v))
+    check(t("пакеты для конвертации", "packages for converting"),
+          lambda: [convert.package_for(k, d.family) for k in (*convert.TOOLS, "heic")], lambda v: all(v))
     check(t("команда установки", "install command"), lambda: packages.install_commands([packages.Pkg("repo", "htop", "")]),
           lambda v: bool(v) and "htop" in v[0])
     check(t("команда удаления", "remove command"), lambda: packages.remove_commands([packages.Pkg("local", "htop", "")]),

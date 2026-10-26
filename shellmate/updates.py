@@ -17,6 +17,15 @@ CHECK_EVERY = 86400
 
 
 def version() -> str:
+    # an editable install (a git working copy) keeps the metadata of the day it was installed
+    src = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    try:
+        text = src.read_text()
+    except OSError:
+        text = ""
+    m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.M)
+    if m and re.search(rf'^name\s*=\s*"{DIST}"', text, re.M):
+        return m.group(1)
     try:
         return metadata.version(DIST)
     except metadata.PackageNotFoundError:
